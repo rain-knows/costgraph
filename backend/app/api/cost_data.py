@@ -10,12 +10,12 @@ from app.domain.authorization import ExecutionPrincipal, get_server_principal
 from app.domain.errors import AgentDomainError
 from app.schemas.cost_data import (
     CostOverview,
-    ProductPeriodDetail,
-    ProductPeriodList,
+    FinishedBatchCostDetail,
+    FinishedBatchCostList,
 )
 from app.services.cost_data_query_service import (
     CostDataQueryService,
-    ProductSort,
+    FinishedBatchSort,
     get_cost_data_query_service,
 )
 
@@ -28,7 +28,7 @@ PeriodQuery = Annotated[
     str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", examples=["2026-06"])
 ]
 QueryText = Annotated[str | None, Query(max_length=200)]
-SortQuery = Annotated[ProductSort, Query()]
+SortQuery = Annotated[FinishedBatchSort, Query()]
 PageQuery = Annotated[int, Query(ge=1)]
 PageSizeQuery = Annotated[int, Query(ge=1, le=100)]
 
@@ -42,20 +42,22 @@ def overview_endpoint(
     return _call(lambda: service.overview(period, principal))
 
 
-@router.get("/products", response_model=ProductPeriodList)
-def products_endpoint(
+@router.get("/finished-batches", response_model=FinishedBatchCostList)
+def finished_batches_endpoint(
     period: PeriodQuery,
     principal: PrincipalDependency,
     service: ServiceDependency,
     query: QueryText = None,
-    sort: SortQuery = "product_id",
+    cost_center_code: QueryText = None,
+    sort: SortQuery = "completion_time_desc",
     page: PageQuery = 1,
     page_size: PageSizeQuery = 20,
-) -> ProductPeriodList:
+) -> FinishedBatchCostList:
     return _call(
-        lambda: service.list_products(
+        lambda: service.list_finished_batches(
             period=period,
             query=query,
+            cost_center_code=cost_center_code,
             sort=sort,
             page=page,
             page_size=page_size,
@@ -64,14 +66,16 @@ def products_endpoint(
     )
 
 
-@router.get("/products/{product_id}", response_model=ProductPeriodDetail)
-def product_detail_endpoint(
-    product_id: Annotated[str, Path(min_length=1, max_length=64)],
-    period: PeriodQuery,
+@router.get(
+    "/finished-batches/{finished_batch_id}",
+    response_model=FinishedBatchCostDetail,
+)
+def finished_batch_detail_endpoint(
+    finished_batch_id: Annotated[str, Path(min_length=1, max_length=128)],
     principal: PrincipalDependency,
     service: ServiceDependency,
-) -> ProductPeriodDetail:
-    return _call(lambda: service.product_detail(product_id, period, principal))
+) -> FinishedBatchCostDetail:
+    return _call(lambda: service.finished_batch_detail(finished_batch_id, principal))
 
 
 def _call(function):

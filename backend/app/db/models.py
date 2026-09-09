@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     CheckConstraint,
-    Date,
     DateTime,
     ForeignKeyConstraint,
     Index,
@@ -35,14 +33,15 @@ class Base(DeclarativeBase):
     pass
 
 
-class Product(Base):
-    __tablename__ = "products"
+class Part(Base):
+    __tablename__ = "parts"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "part_id", name="uq_parts_tenant_part"),
         UniqueConstraint(
             "tenant_id",
             "source_system",
             "source_record_id",
-            name="uq_products_source_record",
+            name="uq_parts_source_record",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "batch_id"],
@@ -50,88 +49,19 @@ class Product(Base):
                 f"{COST_SCHEMA}.data_load_batches.tenant_id",
                 f"{COST_SCHEMA}.data_load_batches.batch_id",
             ],
-            name="fk_products_batch",
+            name="fk_parts_batch",
         ),
         {"schema": COST_SCHEMA},
     )
-
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    product_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    product_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    spec: Mapped[str | None] = mapped_column(String(500))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    source_system: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-
-
-class ProductionOutput(Base):
-    __tablename__ = "production_outputs"
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "source_system",
-            "source_record_id",
-            name="uq_production_outputs_source_record",
-        ),
-        ForeignKeyConstraint(
-            ["tenant_id", "product_id"],
-            [f"{COST_SCHEMA}.products.tenant_id", f"{COST_SCHEMA}.products.product_id"],
-            name="fk_production_outputs_product",
-        ),
-        ForeignKeyConstraint(
-            ["tenant_id", "batch_id"],
-            [
-                f"{COST_SCHEMA}.data_load_batches.tenant_id",
-                f"{COST_SCHEMA}.data_load_batches.batch_id",
-            ],
-            name="fk_production_outputs_batch",
-        ),
-        CheckConstraint(
-            "period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'",
-            name="ck_production_outputs_period",
-        ),
-        CheckConstraint(
-            "to_char(production_date, 'YYYY-MM') = period",
-            name="ck_production_outputs_period_date",
-        ),
-        CheckConstraint(
-            "qualified_output_qty > 0",
-            name="ck_production_outputs_positive_qty",
-        ),
-        Index(
-            "ix_production_outputs_product_period",
-            "tenant_id",
-            "product_id",
-            "period",
-        ),
-        Index(
-            "ix_production_outputs_product_date",
-            "tenant_id",
-            "product_id",
-            "production_date",
-        ),
-        {"schema": COST_SCHEMA},
-    )
-
-    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    output_record_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    product_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    period: Mapped[str] = mapped_column(String(7), nullable=False)
-    production_date: Mapped[date] = mapped_column(Date, nullable=False)
-    qualified_output_qty: Mapped[Decimal] = mapped_column(
-        Numeric(18, 4), nullable=False
-    )
+    part_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    part_number: Mapped[str] = mapped_column(String(128), nullable=False)
+    part_description: Mapped[str] = mapped_column(String(500), nullable=False)
+    part_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    product_family: Mapped[str | None] = mapped_column(String(128))
     unit: Mapped[str] = mapped_column(String(32), nullable=False)
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    source_batch: Mapped[str | None] = mapped_column(String(128))
     batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
@@ -142,19 +72,25 @@ class ProductionOutput(Base):
     )
 
 
-class ProcessCostEntry(Base):
-    __tablename__ = "process_cost_entries"
+class CostEvent(Base):
+    __tablename__ = "cost_events"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "event_id", name="uq_cost_events_tenant_event"),
+        UniqueConstraint(
+            "tenant_id",
+            "output_batch_id",
+            name="uq_cost_events_tenant_output_batch",
+        ),
         UniqueConstraint(
             "tenant_id",
             "source_system",
             "source_record_id",
-            name="uq_process_cost_entries_source_record",
+            name="uq_cost_events_source_record",
         ),
         ForeignKeyConstraint(
-            ["tenant_id", "product_id"],
-            [f"{COST_SCHEMA}.products.tenant_id", f"{COST_SCHEMA}.products.product_id"],
-            name="fk_process_cost_entries_product",
+            ["tenant_id", "part_id"],
+            [f"{COST_SCHEMA}.parts.tenant_id", f"{COST_SCHEMA}.parts.part_id"],
+            name="fk_cost_events_part",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "batch_id"],
@@ -162,58 +98,157 @@ class ProcessCostEntry(Base):
                 f"{COST_SCHEMA}.data_load_batches.tenant_id",
                 f"{COST_SCHEMA}.data_load_batches.batch_id",
             ],
-            name="fk_process_cost_entries_batch",
+            name="fk_cost_events_batch",
         ),
         CheckConstraint(
-            "period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'",
-            name="ck_process_cost_entries_period",
+            "event_type in ('purchase', 'process')", name="ck_cost_events_type"
         ),
         CheckConstraint(
-            "to_char(production_date, 'YYYY-MM') = period",
-            name="ck_process_cost_entries_period_date",
+            "qualified_quantity >= 0 and defective_quantity >= 0",
+            name="ck_cost_events_quantities",
         ),
         CheckConstraint(
-            "cost_item in ('material', 'labor', 'equipment', 'energy', 'overhead')",
-            name="ck_process_cost_entries_item",
-        ),
-        CheckConstraint("currency = 'CNY'", name="ck_process_cost_entries_currency"),
-        CheckConstraint(
-            "amount >= 0", name="ck_process_cost_entries_nonnegative_amount"
+            "qualified_quantity + defective_quantity > 0",
+            name="ck_cost_events_positive_output",
         ),
         CheckConstraint(
-            "process_sort > 0", name="ck_process_cost_entries_positive_sort"
+            "to_char(completion_time, 'YYYY-MM') = period",
+            name="ck_cost_events_period_date",
         ),
-        Index(
-            "ix_process_cost_entries_product_period",
-            "tenant_id",
-            "product_id",
-            "period",
-        ),
-        Index(
-            "ix_process_cost_entries_product_date",
-            "tenant_id",
-            "product_id",
-            "production_date",
-        ),
+        Index("ix_cost_events_period", "tenant_id", "period"),
+        Index("ix_cost_events_finished", "tenant_id", "part_id", "period"),
         {"schema": COST_SCHEMA},
     )
-
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    cost_entry_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    product_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    output_batch_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    part_id: Mapped[str] = mapped_column(String(64), nullable=False)
     period: Mapped[str] = mapped_column(String(7), nullable=False)
-    production_date: Mapped[date] = mapped_column(Date, nullable=False)
-    process_code: Mapped[str] = mapped_column(String(64), nullable=False)
-    process_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    process_sort: Mapped[int] = mapped_column(Integer, nullable=False)
-    cost_item: Mapped[str] = mapped_column(String(32), nullable=False)
-    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    cost_center_code: Mapped[str | None] = mapped_column(String(64))
+    cost_center_name: Mapped[str | None] = mapped_column(String(200))
+    work_order_number: Mapped[str | None] = mapped_column(String(128))
+    lot_number: Mapped[str | None] = mapped_column(String(128))
+    process_code: Mapped[str | None] = mapped_column(String(64))
+    process_name: Mapped[str | None] = mapped_column(String(200))
+    completion_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    qualified_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    defective_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    machine_hours: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=0
+    )
+    labor_hours: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=0
+    )
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    source_batch: Mapped[str | None] = mapped_column(String(128))
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class CostEventInput(Base):
+    __tablename__ = "cost_event_inputs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "input_id", name="uq_cost_event_inputs_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "event_id"],
+            [
+                f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.event_id",
+            ],
+            name="fk_cost_event_inputs_target",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "source_event_id"],
+            [
+                f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.event_id",
+            ],
+            name="fk_cost_event_inputs_source",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "batch_id"],
+            [
+                f"{COST_SCHEMA}.data_load_batches.tenant_id",
+                f"{COST_SCHEMA}.data_load_batches.batch_id",
+            ],
+            name="fk_cost_event_inputs_batch",
+        ),
+        CheckConstraint("consumed_quantity > 0", name="ck_cost_event_inputs_positive"),
+        {"schema": COST_SCHEMA},
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    input_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    consumed_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_system: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class CostRecord(Base):
+    __tablename__ = "cost_records"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "cost_record_id", name="uq_cost_records_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "source_system",
+            "source_record_id",
+            name="uq_cost_records_source_record",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "event_id"],
+            [
+                f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.event_id",
+            ],
+            name="fk_cost_records_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "batch_id"],
+            [
+                f"{COST_SCHEMA}.data_load_batches.tenant_id",
+                f"{COST_SCHEMA}.data_load_batches.batch_id",
+            ],
+            name="fk_cost_records_batch",
+        ),
+        CheckConstraint("amount >= 0", name="ck_cost_records_nonnegative"),
+        CheckConstraint("currency = 'CNY'", name="ck_cost_records_currency"),
+        {"schema": COST_SCHEMA},
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    cost_record_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    cost_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    incurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_system: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_document_no: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_document_line: Mapped[str | None] = mapped_column(String(64))
+    source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -331,10 +366,10 @@ class AgentArtifact(Base):
             "created_at",
         ),
         Index(
-            "ix_agent_artifacts_owner_product_period",
+            "ix_agent_artifacts_owner_part_period",
             "tenant_id",
             "principal_id",
-            "product_id",
+            "part_id",
             "period",
         ),
         {"schema": ARTIFACT_SCHEMA},
@@ -349,8 +384,9 @@ class AgentArtifact(Base):
     message_id: Mapped[str] = mapped_column(String(128), nullable=False)
     run_id: Mapped[str] = mapped_column(String(128), nullable=False)
     conversation_title: Mapped[str] = mapped_column(String(200), nullable=False)
-    product_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    product_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    part_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    part_number: Mapped[str] = mapped_column(String(128), nullable=False)
+    part_description: Mapped[str] = mapped_column(String(500), nullable=False)
     period: Mapped[str] = mapped_column(String(64), nullable=False)
     report_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     report_sha256: Mapped[str] = mapped_column(String(64), nullable=False)

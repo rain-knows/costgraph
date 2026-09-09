@@ -83,9 +83,12 @@ class ArtifactPersistenceError(AgentDomainError):
 
 
 class CostDataNotFoundError(AgentDomainError):
-    def __init__(self, product_id: str, period: str) -> None:
+    def __init__(self, identifier: str, period: str | None = None) -> None:
+        details = {"identifier": identifier}
+        if period is not None:
+            details["period"] = period
         super().__init__(
             "cost_data_not_found",
-            "未找到该产品在指定期间的已发布成本数据。",
-            details={"product_id": product_id, "period": period},
+            "未找到指定的已发布成本批次数据。",
+            details=details,
         )

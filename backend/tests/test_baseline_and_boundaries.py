@@ -33,9 +33,10 @@ def test_single_explicit_baseline_matches_runtime_table_set() -> None:
         "agent_runtime.turns",
         "cost_data.data_load_batches",
         "cost_data.data_load_errors",
-        "cost_data.process_cost_entries",
-        "cost_data.production_outputs",
-        "cost_data.products",
+        "cost_data.parts",
+        "cost_data.cost_events",
+        "cost_data.cost_event_inputs",
+        "cost_data.cost_records",
     }
 
 
@@ -49,8 +50,8 @@ def test_production_app_exposes_only_canonical_api_paths() -> None:
         "/api/conversations/{conversation_id}",
         "/api/conversations/{conversation_id}/messages",
         "/api/cost-data/overview",
-        "/api/cost-data/products",
-        "/api/cost-data/products/{product_id}",
+        "/api/cost-data/finished-batches",
+        "/api/cost-data/finished-batches/{finished_batch_id}",
         "/api/health",
         "/api/livez",
         "/api/readyz",
