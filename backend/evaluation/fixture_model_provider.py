@@ -72,8 +72,16 @@ class FixtureModelProvider:
 
     def parse_cost_question(self, question: str, *_args: Any) -> dict[str, Any]:
         compact_query = question.replace(" ", "")
-        product_match = re.search(r"产品[A-Za-z一二三四五六七八九十]+", compact_query)
-        product_text = product_match.group(0) if product_match else ""
+        part_match = re.search(r"(?:[A-Z0-9]+-)+\d{3}", compact_query, re.IGNORECASE)
+        if part_match:
+            part_text = part_match.group(0).upper()
+        else:
+            alias_match = re.search(
+                r"(?:产品|零件)[A-Za-z一二三四五六七八九十]+", compact_query
+            )
+            part_text = alias_match.group(0) if alias_match else ""
+        if part_text == "产品A":
+            part_text = "FG-001"
         date_range = extract_date_range_from_question(question)
         period = extract_latest_period_from_question(question)
         if date_range:
@@ -90,7 +98,7 @@ class FixtureModelProvider:
             "parse_cost_question",
             {
                 "intent": intent,
-                "product_text": product_text,
+                "part_text": part_text,
                 "period": period,
                 "date_range": date_range,
                 "model": self.model_id,

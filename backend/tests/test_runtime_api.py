@@ -60,7 +60,7 @@ def test_runtime_event_stream_uses_semantic_event_type(monkeypatch) -> None:
                         "schema_version": "2.0",
                         "sequence": 3,
                         "kind": "tool",
-                        "name": "load_cost_inputs",
+                        "name": "load_finished_batches",
                         "status": "success",
                         "summary": "工具执行完成。",
                     },
@@ -73,7 +73,7 @@ def test_runtime_event_stream_uses_semantic_event_type(monkeypatch) -> None:
     assert response.status_code == 200
     assert "id: 7" in response.text
     assert "event: tool" in response.text
-    assert "load_cost_inputs" in response.text
+    assert "load_finished_batches" in response.text
 
 
 def test_health_advertises_v2_and_reports_database_unavailable(monkeypatch) -> None:

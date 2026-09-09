@@ -4,54 +4,46 @@ import hashlib
 import json
 from typing import Any
 
-LINEAGE_SCHEMA_VERSION = "1.0"
+LINEAGE_SCHEMA_VERSION = "2.0"
 
 
 def build_lineage(
     *,
-    product_id: str,
+    part_id: str,
     period: str,
-    date_range: dict[str, str] | None,
-    cost_inputs: dict[str, Any] | list[dict[str, Any]],
+    batch_sources: list[dict[str, Any]],
     source: str = "postgresql_cost_data",
 ) -> dict[str, Any]:
-    records = cost_inputs if isinstance(cost_inputs, list) else [cost_inputs]
-    canonical_records = sorted(
+    if source != "postgresql_cost_data":
+        raise ValueError(f"不支持的成本事实来源：{source}")
+    if not batch_sources:
+        raise ValueError("数据血缘至少需要一个最终批次来源")
+
+    source_ids = {
+        "cost_data.parts": _ids(batch_sources, "parts", "part_id"),
+        "cost_data.cost_events": _ids(batch_sources, "events", "event_id"),
+        "cost_data.cost_event_inputs": _ids(batch_sources, "inputs", "input_id"),
+        "cost_data.cost_records": _ids(batch_sources, "records", "cost_record_id"),
+    }
+    if part_id not in source_ids["cost_data.parts"]:
+        source_ids["cost_data.parts"].append(part_id)
+        source_ids["cost_data.parts"].sort()
+
+    canonical_sources = sorted(
         json.dumps(
-            record,
+            item,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
             default=str,
         )
-        for record in records
+        for item in batch_sources
     )
-    source_ids = {
-        "production_outputs": sorted(
-            {
-                source_id
-                for record in records
-                for source_id in record.get("source_tables", {}).get(
-                    "production_outputs", []
-                )
-            }
-        ),
-        "process_cost_entries": sorted(
-            {
-                source_id
-                for record in records
-                for source_id in record.get("source_tables", {}).get(
-                    "process_cost_entries", []
-                )
-            }
-        ),
-    }
     snapshot_material = {
-        "product_id": product_id,
+        "part_id": part_id,
         "period": period,
-        "date_range": date_range,
         "source_ids": source_ids,
-        "records": canonical_records,
+        "records": canonical_sources,
     }
     snapshot_id = hashlib.sha256(
         json.dumps(
@@ -64,11 +56,7 @@ def build_lineage(
     return {
         "schema_version": LINEAGE_SCHEMA_VERSION,
         "source": source,
-        "query_scope": {
-            "product_id": product_id,
-            "period": period,
-            "date_range": date_range,
-        },
+        "query_scope": {"part_id": part_id, "period": period},
         "tables": [
             {
                 "name": name,
@@ -79,3 +67,39 @@ def build_lineage(
         ],
         "data_snapshot_id": snapshot_id,
     }
+
+
+def _ids(
+    batch_sources: list[dict[str, Any]], collection: str, id_field: str
+) -> list[str]:
+    values: set[str] = set()
+    for source in batch_sources:
+        for item in source.get(collection, []):
+            if isinstance(item, dict) and item.get(id_field):
+                values.add(str(item[id_field]))
+        singular = source.get(collection[:-1])
+        if isinstance(singular, dict) and singular.get(id_field):
+            values.add(str(singular[id_field]))
+
+        # Agent calculation results carry the canonical source graph under
+        # ``trace`` rather than exposing raw table collections at the top
+        # level.  Include those IDs in lineage as well, while retaining
+        # support for repository sources that already provide collections.
+        trace = source.get("trace")
+        if isinstance(trace, dict):
+            trace_collection = {
+                "parts": "nodes",
+                "events": "nodes",
+                "inputs": "edges",
+                "records": "records",
+            }.get(collection)
+            if trace_collection:
+                for item in trace.get(trace_collection, []):
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = item.get(id_field)
+                    if collection == "parts" and isinstance(item.get("part"), dict):
+                        candidate = item["part"].get(id_field)
+                    if candidate:
+                        values.add(str(candidate))
+    return sorted(values)

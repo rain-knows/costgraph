@@ -46,10 +46,10 @@ def _with_event(
     events = _append_event(state, node, status, summary, started_at)
     event = events[-1]
     tool_id = {
-        "resolve_product": "resolve_product",
-        "clarification_gate": "resolve_product_candidates",
-        "load_cost_inputs": "load_cost_inputs",
-        "calculate_cost": "calculate_product_cost",
+        "resolve_part": "resolve_part",
+        "clarification_gate": "resolve_part_candidates",
+        "load_finished_batches": "load_finished_batches",
+        "calculate_cost": "calculate_finished_batch_cost",
         "build_report_json": "build_report",
     }.get(node)
     if tool_id:

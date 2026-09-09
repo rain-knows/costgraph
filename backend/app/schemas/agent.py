@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent.capabilities import CapabilityId, RoutingMode, validate_capability_ids
-from app.domain.report import CostReportV1
+from app.domain.report import CostReportV2
 
 
 class AgentEvent(BaseModel):
@@ -22,7 +22,7 @@ class AgentRunResponse(BaseModel):
     turn_id: str | None = None
     message_id: str | None = None
     final_message: str
-    report_json: CostReportV1 | None = None
+    report_json: CostReportV2 | None = None
     events: list[AgentEvent]
     status_bar: dict[str, Any] | None = None
     outcome: Literal["completed", "needs_clarification", "blocked", "failed"] = (
@@ -66,7 +66,7 @@ class ConversationRunSummary(BaseModel):
     outcome: Literal["completed", "needs_clarification", "blocked", "failed"]
     clarification: dict[str, Any] | None = None
     event_count: int = Field(ge=0)
-    inherited_product: str | None = None
+    inherited_part: str | None = None
     has_report: bool
 
 

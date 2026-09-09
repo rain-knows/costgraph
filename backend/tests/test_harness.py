@@ -48,7 +48,7 @@ def test_unauthorized_tool_invocation_is_denied() -> None:
         )
     )
     _, result = AgentHarness().registry.invoke(
-        "list_products", {}, prepared.execution_context
+        "list_parts", {}, prepared.execution_context
     )
     assert result.status == "denied"
     assert result.error_category == "authorization"

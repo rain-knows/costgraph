@@ -16,7 +16,7 @@ from app.domain.errors import (
     ArtifactNotFoundError,
     ArtifactPersistenceError,
 )
-from app.domain.report import CostReportV1
+from app.domain.report import CostReportV2
 
 
 class PostgresArtifactRepository:
@@ -79,8 +79,9 @@ class PostgresArtifactRepository:
             pattern = f"%{normalized_query}%"
             filters.append(
                 or_(
-                    AgentArtifact.product_id.ilike(pattern),
-                    AgentArtifact.product_name.ilike(pattern),
+                    AgentArtifact.part_id.ilike(pattern),
+                    AgentArtifact.part_number.ilike(pattern),
+                    AgentArtifact.part_description.ilike(pattern),
                     AgentArtifact.period.ilike(pattern),
                     AgentArtifact.conversation_title.ilike(pattern),
                 )
@@ -105,8 +106,9 @@ class PostgresArtifactRepository:
                         AgentArtifact.message_id,
                         AgentArtifact.run_id,
                         AgentArtifact.conversation_title,
-                        AgentArtifact.product_id,
-                        AgentArtifact.product_name,
+                        AgentArtifact.part_id,
+                        AgentArtifact.part_number,
+                        AgentArtifact.part_description,
                         AgentArtifact.period,
                         AgentArtifact.report_sha256,
                         AgentArtifact.data_snapshot_id,
@@ -236,8 +238,9 @@ class PostgresArtifactRepository:
             "message_id": row.message_id,
             "run_id": row.run_id,
             "conversation_title": row.conversation_title,
-            "product_id": row.product_id,
-            "product_name": row.product_name,
+            "part_id": row.part_id,
+            "part_number": row.part_number,
+            "part_description": row.part_description,
             "period": row.period,
             "report_sha256": row.report_sha256,
             "data_snapshot_id": row.data_snapshot_id,
@@ -251,7 +254,7 @@ class PostgresArtifactRepository:
 
     @staticmethod
     def _to_record(row: AgentArtifact) -> dict[str, Any]:
-        report = CostReportV1.model_validate(row.report_json).model_dump(mode="json")
+        report = CostReportV2.model_validate(row.report_json).model_dump(mode="json")
         return {
             "artifact_id": row.artifact_id,
             "artifact_type": row.artifact_type,
@@ -262,8 +265,9 @@ class PostgresArtifactRepository:
             "message_id": row.message_id,
             "run_id": row.run_id,
             "conversation_title": row.conversation_title,
-            "product_id": row.product_id,
-            "product_name": row.product_name,
+            "part_id": row.part_id,
+            "part_number": row.part_number,
+            "part_description": row.part_description,
             "period": row.period,
             "report_json": report,
             "report_sha256": row.report_sha256,

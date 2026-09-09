@@ -1,25 +1,125 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-REPORT_SCHEMA_VERSION = "1.0"
+REPORT_SCHEMA_VERSION = "2.0"
 
 
-class ReportProduct(BaseModel):
+class ReportPart(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    product_id: str
-    product_name: str
-    spec: str | None = None
+    part_id: str
+    part_number: str
+    part_description: str
+    part_type: Literal[
+        "raw_material",
+        "purchased_semi_finished",
+        "work_in_progress",
+        "finished_good",
+    ]
+    product_family: str | None = None
+
+
+class CostMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Decimal = Field(ge=0, decimal_places=2)
+    unit_cost: Decimal = Field(ge=0, decimal_places=2)
+
+
+class ManufacturingCostLeaf(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cost_code: str
+    label: str
+    metric: CostMetric
+    share: Decimal = Field(ge=0, decimal_places=2)
+
+
+class ManufacturingCostGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_code: str
+    group_label: str
+    metric: CostMetric
+    share: Decimal = Field(ge=0, decimal_places=2)
+    leaves: list[ManufacturingCostLeaf]
+
+
+class ManufacturingCostView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[ManufacturingCostGroup] = Field(min_length=6, max_length=6)
+    total: CostMetric
+
+
+class MaterialLaborOverheadView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    material: CostMetric
+    labor: CostMetric
+    overhead: CostMetric
+    total: CostMetric
+
+
+class VariableFixedCostView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    variable_cost_1: CostMetric
+    fixed_cost_1: CostMetric
+    manufacturing_total: CostMetric
+    after_sales_compensation: CostMetric
+    transportation: CostMetric
+    storage_fee: CostMetric
+    variable_cost_2: CostMetric
+    fixed_cost_2: CostMetric
+    total_cost_2: CostMetric
+
+
+class FinishedBatchCost(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    finished_batch_id: str
+    event_id: str
+    part: ReportPart
+    period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    completion_time: str
+    cost_center_code: str | None = None
+    cost_center_name: str | None = None
+    work_order_number: str | None = None
+    lot_number: str
+    process_code: str | None = None
+    process_name: str | None = None
+    qualified_quantity: Decimal = Field(ge=0, decimal_places=4)
+    defective_quantity: Decimal = Field(ge=0, decimal_places=4)
+    completed_quantity: Decimal = Field(gt=0, decimal_places=4)
+    quality_rate: Decimal = Field(ge=0, le=100, decimal_places=2)
+    unit: str
+    machine_hours: Decimal = Field(ge=0, decimal_places=4)
+    labor_hours: Decimal = Field(ge=0, decimal_places=4)
+    manufacturing_view: ManufacturingCostView
+    material_labor_overhead_view: MaterialLaborOverheadView
+    variable_fixed_view: VariableFixedCostView
+
+
+class BatchSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_count: int = Field(ge=1)
+    completed_quantity: Decimal = Field(gt=0, decimal_places=4)
+    qualified_quantity: Decimal = Field(ge=0, decimal_places=4)
+    defective_quantity: Decimal = Field(ge=0, decimal_places=4)
+    quality_rate: Decimal = Field(ge=0, le=100, decimal_places=2)
 
 
 class SummaryCard(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str
-    value: int | float
+    value: Decimal | int
     unit: str
 
 
@@ -31,59 +131,15 @@ class InsightCard(BaseModel):
     description: str
 
 
-class ProcessCost(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    process_name: str
-    total_cost: int | float
-    material_cost: int | float
-    labor_cost: int | float
-    equipment_cost: int | float
-    energy_cost: int | float
-    overhead_cost: int | float
-
-
-class CompositionItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    value: int | float
-
-
-class ReportDateRange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    start_date: str
-    end_date: str
-
-
-class ProcessChange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    process_name: str
-    current_total_cost: int | float
-    previous_total_cost: int | float
-    delta: int | float
-    delta_rate: int | float
-
-
-class CostComparison(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    previous_period: str
-    current_unit_cost: int | float
-    previous_unit_cost: int | float
-    unit_cost_delta: int | float
-    unit_cost_delta_rate: int | float
-    process_changes: list[ProcessChange]
-    top_increase_process: ProcessChange | None = None
-    top_cost_process: ProcessCost | None = None
-
-
 class LineageTable(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
+    name: Literal[
+        "cost_data.parts",
+        "cost_data.cost_events",
+        "cost_data.cost_event_inputs",
+        "cost_data.cost_records",
+    ]
     record_count: int = Field(ge=0)
     record_id_sample: list[str]
 
@@ -91,10 +147,10 @@ class LineageTable(BaseModel):
 class Lineage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str
-    source: str
+    schema_version: Literal["2.0"]
+    source: Literal["postgresql_cost_data"]
     query_scope: dict[str, Any]
-    tables: list[LineageTable]
+    tables: list[LineageTable] = Field(min_length=4, max_length=4)
     data_snapshot_id: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
@@ -144,23 +200,24 @@ class ReportEvent(BaseModel):
     finished_at: str | None = None
 
 
-class CostReportV1(BaseModel):
+class CostReportV2(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    report_schema_version: Literal["1.0"]
+    report_schema_version: Literal["2.0"]
     rule_version: str
     prompt_version: str
     code_version: str
     data_snapshot_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     run_id: str
-    product: ReportProduct
-    period: str
-    date_range: ReportDateRange | None = None
+    part: ReportPart
+    period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    batch_summary: BatchSummary
     summary_cards: list[SummaryCard] = Field(min_length=3)
-    process_cost_breakdown: list[ProcessCost] = Field(min_length=1)
-    cost_composition_chart: list[CompositionItem] = Field(min_length=1)
+    manufacturing_view: ManufacturingCostView
+    material_labor_overhead_view: MaterialLaborOverheadView
+    variable_fixed_view: VariableFixedCostView
+    finished_batches: list[FinishedBatchCost] = Field(min_length=1)
     insight_cards: list[InsightCard]
-    comparison: CostComparison | None = None
     calculation_formula: list[str]
     calculation_policy: dict[str, str]
     analysis_text: str

@@ -34,7 +34,7 @@ class DataScope(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     source: Literal["postgresql_cost_data"] = "postgresql_cost_data"
-    allowed_product_ids: tuple[str, ...] = ()
+    allowed_part_ids: tuple[str, ...] = ()
     allowed_period_start: str | None = Field(
         default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"
     )
@@ -70,11 +70,11 @@ class ExecutionContext(BaseModel):
         if not self.has_capability(capability):
             raise PermissionError(f"执行主体未获授权使用能力：{capability}")
 
-    def require_cost_scope(self, product_id: str, period: str | None = None) -> None:
+    def require_cost_scope(self, part_id: str, period: str | None = None) -> None:
         self.require_capability("cost_calculation")
-        allowed_products = self.data_scope.allowed_product_ids
-        if allowed_products and product_id not in allowed_products:
-            raise PermissionError(f"产品不在授权数据范围内：{product_id}")
+        allowed_parts = self.data_scope.allowed_part_ids
+        if allowed_parts and part_id not in allowed_parts:
+            raise PermissionError(f"零件不在授权数据范围内：{part_id}")
         if (
             period
             and self.data_scope.allowed_period_start
@@ -132,7 +132,7 @@ def _data_scope() -> DataScope:
     settings = get_settings()
     return DataScope(
         source="postgresql_cost_data",
-        allowed_product_ids=tuple(settings.csv_values("agent_allowed_product_ids")),
+        allowed_part_ids=tuple(settings.csv_values("agent_allowed_part_ids")),
         allowed_period_start=settings.agent_allowed_period_start,
         allowed_period_end=settings.agent_allowed_period_end,
     )

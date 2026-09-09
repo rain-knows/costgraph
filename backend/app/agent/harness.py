@@ -283,18 +283,18 @@ def _validate_data_scope(
     if spec.data_scope == "published_cost_data":
         if context.data_scope.source != "postgresql_cost_data":
             raise PermissionError("成本数据范围无效。")
-        product_id = arguments.get("product_id")
+        part_id = arguments.get("part_id")
         periods = [
             arguments.get(key)
             for key in ("period", "start_period", "end_period")
             if arguments.get(key)
         ]
-        if product_id:
+        if part_id:
             if periods:
                 for period in periods:
-                    context.require_cost_scope(str(product_id), str(period))
+                    context.require_cost_scope(str(part_id), str(period))
             else:
-                context.require_cost_scope(str(product_id))
+                context.require_cost_scope(str(part_id))
     elif spec.data_scope != "none":
         raise PermissionError("工具声明了未知数据范围。")
 
@@ -382,95 +382,45 @@ def default_tool_registry() -> ToolRegistry:
 
     registry = ToolRegistry()
     cost_capability: list[CapabilityId] = ["cost_calculation"]
-    for tool_id, function, description, input_schema, output_schema, deterministic in (
+    for tool_id, function, description, output_schema in (
         (
-            "resolve_product",
-            tools.resolve_product_tool,
-            "匹配唯一产品",
-            {"type": "object"},
+            "resolve_part",
+            tools.resolve_part_tool,
+            "匹配唯一零件",
             {"type": ["object", "null"]},
-            True,
         ),
         (
-            "resolve_product_candidates",
-            tools.resolve_product_candidates_tool,
-            "列出产品候选",
-            {"type": "object"},
+            "resolve_part_candidates",
+            tools.resolve_part_candidates_tool,
+            "列出零件候选",
             {"type": "array"},
-            True,
         ),
+        ("list_parts", tools.list_parts_tool, "列出授权零件", {"type": "array"}),
         (
-            "list_products",
-            tools.list_products_tool,
-            "列出授权产品",
-            {"type": "object"},
+            "load_finished_batches",
+            tools.load_finished_batches_tool,
+            "读取已发布产成品批次及卷积成本",
             {"type": "array"},
-            True,
         ),
         (
-            "load_cost_inputs",
-            tools.load_cost_inputs_tool,
-            "读取已发布成本输入",
+            "calculate_finished_batch_cost",
+            tools.calculate_finished_batch_cost_tool,
+            "确定性计算批次三视图成本",
             {"type": "object"},
-            {"type": ["object", "null"]},
-            True,
-        ),
-        (
-            "load_previous_cost_inputs",
-            tools.load_previous_cost_inputs_tool,
-            "读取上一期间成本输入",
-            {"type": "object"},
-            {"type": ["object", "null"]},
-            True,
-        ),
-        (
-            "load_cost_inputs_in_period_range",
-            tools.load_cost_inputs_in_period_range_tool,
-            "读取日期范围成本输入",
-            {"type": "object"},
-            {"type": "array"},
-            True,
-        ),
-        (
-            "calculate_product_cost",
-            tools.calculate_product_cost_tool,
-            "确定性计算产品成本",
-            {"type": "object"},
-            {"type": "object"},
-            True,
-        ),
-        (
-            "calculate_product_cost_for_date_range",
-            tools.calculate_product_cost_for_date_range_tool,
-            "确定性计算日期范围成本",
-            {"type": "object"},
-            {"type": "object"},
-            True,
-        ),
-        (
-            "compare_cost_results",
-            tools.compare_cost_results_tool,
-            "比较成本结果",
-            {"type": "object"},
-            {"type": "object"},
-            True,
         ),
     ):
         registry.register(
             ToolSpec(
                 tool_id=tool_id,
                 description=description,
-                input_schema={**input_schema, **_callable_input_schema(function)},
+                input_schema=_callable_input_schema(function),
                 output_schema=output_schema,
                 required_capabilities=cost_capability,
-                data_scope="published_cost_data"
-                if tool_id.startswith(("load_", "resolve_"))
-                or tool_id == "list_products"
-                else "none",
-                deterministic=deterministic,
+                data_scope="published_cost_data",
+                deterministic=True,
                 read_only=True,
                 retry_policy="transient",
-                version="cost-tools-v1",
+                version="cost-tools-v2",
             ),
             function,
         )
@@ -485,7 +435,7 @@ def default_tool_registry() -> ToolRegistry:
             deterministic=True,
             read_only=True,
             retry_policy="transient",
-            version="cost-tools-v1",
+            version="cost-tools-v2",
         ),
         tools.build_report_tool,
     )

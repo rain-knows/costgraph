@@ -70,7 +70,7 @@ def create_cost_agent_graph(
         route_after_clarification_gate,
         {
             "request_clarification": "request_clarification",
-            "resolve_product": "resolve_product",
+            "resolve_part": "resolve_part",
         },
     )
     graph.add_edge("request_clarification", END)

@@ -20,9 +20,9 @@ class Clarification(TypedDict, total=False):
 
 
 class ConversationContext(TypedDict, total=False):
-    current_product_text: str
-    current_product_id: str
-    current_product_name: str
+    current_part_text: str
+    current_part_id: str
+    current_part_number: str
     current_period: str
     current_date_range: dict[str, str] | None
     last_intent: str
@@ -33,7 +33,7 @@ class ConversationContext(TypedDict, total=False):
 
 
 class ContextUsed(TypedDict, total=False):
-    inherited_product: str | None
+    inherited_part: str | None
     inherited_period: str | None
     inherited_date_range: dict[str, str] | None
     recent_message_count: int
@@ -41,9 +41,9 @@ class ContextUsed(TypedDict, total=False):
 
 def empty_conversation_context() -> ConversationContext:
     return {
-        "current_product_text": "",
-        "current_product_id": "",
-        "current_product_name": "",
+        "current_part_text": "",
+        "current_part_id": "",
+        "current_part_number": "",
         "current_period": "",
         "current_date_range": None,
         "last_intent": "",

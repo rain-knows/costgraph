@@ -195,16 +195,16 @@ def _clarification_precedes_cost_data(result: dict) -> bool:
         ),
         None,
     )
-    load_index = next(
+    batch_index = next(
         (
             index
             for index, event in enumerate(events)
-            if event.get("node") == "load_cost_inputs"
+            if event.get("node") == "load_finished_batches"
         ),
         None,
     )
-    return load_index is None or (
-        clarification_index is not None and clarification_index < load_index
+    return batch_index is None or (
+        clarification_index is not None and clarification_index < batch_index
     )
 
 

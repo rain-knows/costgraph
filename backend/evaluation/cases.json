@@ -1,12 +1,12 @@
 [
   {
     "id": "single_month_cost",
-    "turns": ["查询产品A 2026年6月单位成本，并说明成本构成"],
+    "turns": ["查询 FG-001 2026年6月单位成本，并说明成本构成"],
     "expect": {
       "outcome": "completed",
       "period": "2026-06",
-      "unit_cost": 13.9,
-      "total_cost": 139000,
+      "unit_cost": "53.50",
+      "total_cost": "50000.00",
       "effective_capabilities": ["system_help", "cost_calculation"],
       "trace_redacted": true,
       "clarification_before_cost_data": true,
@@ -17,8 +17,8 @@
         "understand_question",
         "merge_context_slots",
         "clarification_gate",
-        "resolve_product",
-        "load_cost_inputs",
+        "resolve_part",
+        "load_finished_batches",
         "calculate_cost",
         "build_report_json",
         "final_answer"
@@ -28,13 +28,13 @@
   {
     "id": "continuous_followup",
     "turns": [
-      "查询产品A 2026年6月单位成本",
-      "那五月呢？"
+      "查询 FG-001 2026年6月单位成本",
+      "那七月呢？"
     ],
     "expect": {
       "outcome": "completed",
-      "period": "2026-05",
-      "unit_cost": 13.2,
+      "period": "2026-07",
+      "unit_cost": "5.50",
       "trace_redacted": true,
       "clarification_before_cost_data": true
     }
@@ -43,13 +43,13 @@
     "id": "clarification_resume",
     "turns": [
       "查一下成本",
-      "产品A",
+      "FG-001",
       "2026年6月"
     ],
     "expect": {
       "outcome": "completed",
       "period": "2026-06",
-      "unit_cost": 13.9,
+      "unit_cost": "53.50",
       "clarification_count": 2,
       "trace_redacted": true,
       "clarification_before_cost_data": true
@@ -57,12 +57,12 @@
   },
   {
     "id": "exact_date_range",
-    "turns": ["核算产品A 2026年5月15日到2026年6月10日之间的成本"],
+    "turns": ["核算 FG-001 2026年6月1日到2026年6月30日之间的成本"],
     "expect": {
       "outcome": "completed",
-      "period": "2026-05-15 至 2026-06-10",
-      "unit_cost": 13.48,
-      "total_cost": 119111.84,
+      "period": "2026-06",
+      "unit_cost": "53.50",
+      "total_cost": "50000.00",
       "trace_redacted": true,
       "clarification_before_cost_data": true
     }

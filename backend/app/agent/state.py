@@ -33,11 +33,11 @@ class CostAgentState(TypedDict, total=False):
     outcome: RunOutcome
     readonly_answer: str
     intent: Literal["cost_query", "cost_breakdown", "variance_analysis", "unknown"]
-    product_text: str
-    product: dict[str, Any]
+    part_text: str
+    part: dict[str, Any]
     period: str
     date_range: dict[str, str]
-    explicit_product: bool
+    explicit_part: bool
     explicit_period: bool
     explicit_date_range: bool
     resolved_slots: dict[str, Any]
@@ -47,9 +47,7 @@ class CostAgentState(TypedDict, total=False):
     conversation_context: ConversationContext
     context_used: ContextUsed
     recent_messages: list[dict[str, Any]]
-    cost_inputs: dict[str, Any]
-    range_cost_inputs: list[dict[str, Any]]
-    previous_cost_inputs: dict[str, Any]
+    batch_sources: list[dict[str, Any]]
     calculation_result: dict[str, Any]
     previous_calculation_result: dict[str, Any]
     comparison_result: dict[str, Any]

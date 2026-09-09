@@ -29,7 +29,17 @@ from app.services.llm_service import (
     get_deepseek_model,
 )
 
-COST_KEYWORDS = ("成本", "单位成本", "构成", "核算", "报表", "产品", "工序", "产量")
+COST_KEYWORDS = (
+    "成本",
+    "单位成本",
+    "构成",
+    "核算",
+    "报表",
+    "产品",
+    "零件",
+    "工序",
+    "产量",
+)
 AMBIGUOUS_ROUTE_KEYWORDS = ("查询", "分析", "数据", "检查", "看一下")
 FOLLOWUP_COST_KEYWORDS = (
     "上个月",
@@ -124,7 +134,7 @@ def _deterministic_route(
     has_month_followup = bool(
         re.search(r"(?:[0-9一二三四五六七八九十]{1,3})月", question)
     )
-    if context.get("current_product_text") and (
+    if context.get("current_part_text") and (
         has_month_followup
         or any(keyword in question for keyword in FOLLOWUP_COST_KEYWORDS)
     ):
@@ -242,7 +252,7 @@ def understand_question(
     )
     parsed = require_call_value(outcome)
 
-    product_text = parsed["product_text"]
+    part_text = parsed.get("part_text", "")
     period = parsed["period"]
     date_range = parsed.get("date_range")
     intent = parsed["intent"]
@@ -252,9 +262,9 @@ def understand_question(
         if date_range
         else period
     )
-    if product_text or period_text:
+    if part_text or period_text:
         summary = (
-            f"DeepSeek {get_deepseek_model()} 识别到{product_text}和期间{period_text}"
+            f"DeepSeek {get_deepseek_model()} 识别到{part_text}和期间{period_text}"
         )
     else:
         summary = "当前消息未提供完整产品或期间，交由澄清节点检查。"
@@ -263,10 +273,10 @@ def understand_question(
 
     updates: dict[str, Any] = {
         "intent": intent,
-        "product_text": product_text,
+        "part_text": part_text,
         "period": period,
         "date_range": date_range,
-        "explicit_product": _has_explicit_product_mention(query, product_text),
+        "explicit_part": _has_explicit_part_mention(query, part_text),
         "explicit_period": bool(extract_latest_period_from_question(query)),
         "explicit_date_range": bool(extract_date_range_from_question(query)),
         "ai_trace": ai_trace,
@@ -287,13 +297,13 @@ def _shift_period(period: str, delta: int) -> str:
     return f"{month_index // 12:04d}-{month_index % 12 + 1:02d}"
 
 
-def _has_explicit_product_mention(question: str, product_text: str) -> bool:
+def _has_explicit_part_mention(question: str, part_text: str) -> bool:
     compact = question.replace(" ", "").upper()
     if re.search(r"产品[A-Z一二三四五六七八九十]+", compact):
         return True
     if re.search(r"\bP\d+\b", compact):
         return True
-    return bool(product_text and product_text.replace(" ", "").upper() in compact)
+    return bool(part_text and part_text.replace(" ", "").upper() in compact)
 
 
 def _infer_followup_period(question: str, base_period: str) -> str:
@@ -324,15 +334,15 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
     context = state.get("conversation_context", empty_conversation_context())
     query = state["user_query"]
 
-    explicit_product = state.get("explicit_product", False)
+    explicit_part = state.get("explicit_part", False)
     explicit_period = state.get("explicit_period", False)
     explicit_date_range = state.get("explicit_date_range", False)
 
-    product_text = state.get("product_text", "") if explicit_product else ""
-    inherited_product: str | None = None
-    if not product_text:
-        product_text = context.get("current_product_text", "")
-        inherited_product = context.get("current_product_name") or product_text or None
+    part_text = state.get("part_text", "") if explicit_part else ""
+    inherited_part: str | None = None
+    if not part_text:
+        part_text = context.get("current_part_text", "")
+        inherited_part = context.get("current_part_number") or part_text or None
 
     date_range = state.get("date_range") if explicit_date_range else None
     period = state.get("period", "") if explicit_period else ""
@@ -355,14 +365,14 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
 
     context_used = {
         **state.get("context_used", {}),
-        "inherited_product": inherited_product,
+        "inherited_part": inherited_part,
         "inherited_period": inherited_period,
         "inherited_date_range": inherited_date_range,
     }
     inherited_labels = [
         label
         for value, label in (
-            (inherited_product, "产品"),
+            (inherited_part, "零件"),
             (inherited_period or inherited_date_range, "期间"),
         )
         if value
@@ -377,7 +387,7 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
         "context_resolution": {
             "context_used": context_used,
             "resolved_slots": {
-                "product_text": product_text,
+                "part_text": part_text,
                 "period": period,
                 "date_range": date_range,
                 "intent": state.get("intent", "cost_query"),
@@ -388,11 +398,11 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
     return _with_event(
         state,
         {
-            "product_text": product_text,
+            "part_text": part_text,
             "period": period,
             "date_range": date_range,
             "resolved_slots": {
-                "product_text": product_text,
+                "part_text": part_text,
                 "period": period,
                 "date_range": date_range,
                 "intent": state.get("intent", "cost_query"),
@@ -411,7 +421,7 @@ def clarification_gate(
     state: CostAgentState, runtime_services: RuntimeServices | None = None
 ) -> dict[str, Any]:
     started_at = _now()
-    product_text = state.get("product_text", "")
+    part_text = state.get("part_text", "")
     period = state.get("period", "")
     date_range = state.get("date_range")
     missing_slots: list[str] = []
@@ -419,19 +429,19 @@ def clarification_gate(
     candidates: list[dict[str, Any]] = []
     services = _runtime_services(state, runtime_services)
 
-    if not product_text:
-        missing_slots.append("product")
+    if not part_text:
+        missing_slots.append("part")
     else:
         candidates = require_call_value(
             services.invoke_tool(
-                "resolve_product_candidates",
-                {"product_text": product_text},
+                "resolve_part_candidates",
+                {"part_text": part_text},
                 state["execution_context"],
                 node="clarification_gate",
             )
         )
         if len(candidates) != 1:
-            invalid_slots.append("product")
+            invalid_slots.append("part")
 
     if not period and not date_range:
         missing_slots.append("period_or_date_range")
@@ -439,7 +449,7 @@ def clarification_gate(
         invalid_slots.append("date_range")
 
     if not missing_slots and not invalid_slots:
-        product = candidates[0]
+        part = candidates[0]
         ai_trace = {
             **state.get("ai_trace", _new_ai_trace()),
             "clarification_decision": {
@@ -452,7 +462,7 @@ def clarification_gate(
         return _with_event(
             state,
             {
-                "product": product,
+                "part": part,
                 "missing_slots": [],
                 "invalid_slots": [],
                 "clarification": None,
@@ -461,37 +471,29 @@ def clarification_gate(
             },
             "clarification_gate",
             "success",
-            "产品和核算期间信息完整，可以进入确定性成本链路。",
+            "零件和核算期间信息完整，可以进入确定性成本链路。",
             started_at,
         )
 
-    products = require_call_value(
-        services.invoke_tool(
-            "list_products",
-            {},
-            state["execution_context"],
-            node="clarification_gate",
-        )
-    )
     options = (
         [
-            {"label": item["product_name"], "value": item["product_name"]}
-            for item in products
+            {"label": item["part_number"], "value": item["part_number"]}
+            for item in candidates
         ]
-        if "product" in [*missing_slots, *invalid_slots]
+        if "part" in invalid_slots
         else []
     )
 
     if "date_range" in invalid_slots:
         question = "开始日期不能晚于结束日期，请重新提供核算日期范围。"
-    elif "product" in invalid_slots:
-        question = f"没有唯一匹配到“{product_text}”，请选择要核算的产品。"
-    elif set(missing_slots) == {"product", "period_or_date_range"}:
-        question = "需要补充产品和核算期间，例如“产品A 2026年6月”。"
-    elif "product" in missing_slots:
-        question = "要核算哪个产品？"
+    elif "part" in invalid_slots:
+        question = f"没有唯一匹配到“{part_text}”，请选择要核算的零件。"
+    elif set(missing_slots) == {"part", "period_or_date_range"}:
+        question = "需要补充零件和核算期间，例如“FG-001 2026年6月”。"
+    elif "part" in missing_slots:
+        question = "要核算哪个零件？"
     else:
-        display_name = candidates[0]["product_name"] if candidates else product_text
+        display_name = candidates[0]["part_number"] if candidates else part_text
         question = f"要核算{display_name}的哪个期间？例如“2026年6月”。"
 
     clarification = {
@@ -534,7 +536,7 @@ def request_clarification(state: CostAgentState) -> dict[str, Any]:
     context = {
         **empty_conversation_context(),
         **state.get("conversation_context", {}),
-        "current_product_text": state.get("product_text", ""),
+        "current_part_text": state.get("part_text", ""),
         "current_period": state.get("period", ""),
         "current_date_range": state.get("date_range"),
         "last_intent": state.get("intent", "cost_query"),
@@ -579,14 +581,14 @@ def final_answer(state: CostAgentState) -> dict[str, Any]:
         summary = "Agent 已停止，未返回编造金额。"
         outcome = "failed"
     else:
-        product = state["product"]
+        part = state["part"]
         date_range = state.get("date_range")
         period_text = (
             f"{date_range['start_date']} 至 {date_range['end_date']}"
             if date_range
             else state["period"]
         )
-        final_message = f"已完成{product['product_name']} {period_text} 成本分析。"
+        final_message = f"已完成{part['part_number']} {period_text} 成本分析。"
         status = "success"
         summary = final_message
         outcome = "completed"
@@ -599,12 +601,12 @@ def final_answer(state: CostAgentState) -> dict[str, Any]:
         "partial_slots": {},
     }
     if outcome == "completed" and state.get("effective_route") == "cost_calculation":
-        product = state["product"]
+        part = state["part"]
         context.update(
             {
-                "current_product_text": product["product_name"],
-                "current_product_id": product["product_id"],
-                "current_product_name": product["product_name"],
+                "current_part_text": part["part_number"],
+                "current_part_id": part["part_id"],
+                "current_part_number": part["part_number"],
                 "current_period": state.get("period", ""),
                 "current_date_range": state.get("date_range"),
                 "last_intent": state.get("intent", "cost_query"),
@@ -635,7 +637,7 @@ def final_answer(state: CostAgentState) -> dict[str, Any]:
 def route_after_clarification_gate(state: CostAgentState) -> str:
     if state.get("outcome") == "needs_clarification":
         return "request_clarification"
-    return "resolve_product"
+    return "resolve_part"
 
 
 def route_after_select_route(state: CostAgentState) -> str:

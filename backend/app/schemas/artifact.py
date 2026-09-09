@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.domain.report import CostReportV1
+from app.domain.report import CostReportV2
 
 
 class ArtifactSummaryResponse(BaseModel):
@@ -16,8 +16,9 @@ class ArtifactSummaryResponse(BaseModel):
     message_id: str
     run_id: str
     conversation_title: str
-    product_id: str
-    product_name: str
+    part_id: str
+    part_number: str
+    part_description: str
     period: str
     report_sha256: str
     data_snapshot_id: str
@@ -30,7 +31,7 @@ class ArtifactSummaryResponse(BaseModel):
 
 
 class ArtifactDetailResponse(ArtifactSummaryResponse):
-    report_json: CostReportV1
+    report_json: CostReportV2
 
 
 class ArtifactListResponse(BaseModel):

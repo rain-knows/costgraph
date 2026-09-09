@@ -281,9 +281,9 @@ class PostgresConversationRepository:
                     func.coalesce(func.jsonb_array_length(run_json["events"]), 0).label(
                         "event_count"
                     ),
-                    run_json["context_used"]["inherited_product"]
+                    run_json["context_used"]["inherited_part"]
                     .as_string()
-                    .label("inherited_product"),
+                    .label("inherited_part"),
                     run_json["report_json"]["run_id"]
                     .as_string()
                     .is_not(None)
@@ -344,7 +344,7 @@ class PostgresConversationRepository:
                 "outcome": row.outcome or "completed",
                 "clarification": row.clarification,
                 "event_count": int(row.event_count),
-                "inherited_product": row.inherited_product,
+                "inherited_part": row.inherited_part,
                 "has_report": bool(row.has_report),
             }
         return {

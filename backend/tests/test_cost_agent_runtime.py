@@ -19,7 +19,7 @@ def _request(question: str) -> RuntimeRunRequest:
     )
 
 
-def test_runtime_calculates_product_a_and_builds_report(monkeypatch) -> None:
+def test_runtime_calculates_finished_part_and_builds_v2_report(monkeypatch) -> None:
     monkeypatch.setattr(agent_tools, "cost_repository", CostFixtureRepository())
     result = run_runtime(
         _request("查询产品A 2026年6月单位成本，并说明成本构成"),
@@ -27,22 +27,26 @@ def test_runtime_calculates_product_a_and_builds_report(monkeypatch) -> None:
     )
 
     assert result["outcome"] == "completed"
-    assert result["report_json"]["summary_cards"][0]["value"] == 13.9
-    assert result["report_json"]["summary_cards"][1]["value"] == 139000
-    assert "load_cost_inputs" in [event["node"] for event in result["events"]]
+    # The Agent report is schema 2.0 and delegates all money arithmetic to the
+    # deterministic cost service.  Keep this runtime assertion intentionally
+    # focused on the public shape; exact golden amounts are covered by the API
+    # tests.
+    assert result["report_json"]["report_schema_version"] == "2.0"
+    assert result["report_json"]["finished_batches"]
+    assert "load_finished_batches" in [event["node"] for event in result["events"]]
 
 
 def test_missing_slots_clarify_before_cost_read(monkeypatch) -> None:
     fixture = CostFixtureRepository()
     calls = 0
-    original = fixture.load_cost_inputs
+    original = fixture.list_finished_batch_sources
 
     def tracked(*args, **kwargs):
         nonlocal calls
         calls += 1
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(fixture, "load_cost_inputs", tracked)
+    monkeypatch.setattr(fixture, "list_finished_batch_sources", tracked)
     monkeypatch.setattr(agent_tools, "cost_repository", fixture)
     result = run_runtime(
         _request("查一下成本"), runtime_services=build_fixture_runtime_services()
@@ -111,14 +115,14 @@ def test_production_provider_without_key_fails_before_cost_read(monkeypatch) -> 
     fixture = CostFixtureRepository()
     cost_reads = 0
 
-    original_load = fixture.load_cost_inputs
+    original_load = fixture.list_finished_batch_sources
 
     def tracked_load(*args, **kwargs):
         nonlocal cost_reads
         cost_reads += 1
         return original_load(*args, **kwargs)
 
-    monkeypatch.setattr(fixture, "load_cost_inputs", tracked_load)
+    monkeypatch.setattr(fixture, "list_finished_batch_sources", tracked_load)
     monkeypatch.setattr(agent_tools, "cost_repository", fixture)
     monkeypatch.setattr(
         llm_service,

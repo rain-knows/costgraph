@@ -43,8 +43,9 @@ class RuntimeContext(BaseModel):
                 for key, value in self.conversation_slots.items()
                 if key
                 in {
-                    "current_product_text",
-                    "current_product_id",
+                    "current_part_text",
+                    "current_part_id",
+                    "current_part_number",
                     "current_period",
                     "current_date_range",
                     "last_intent",

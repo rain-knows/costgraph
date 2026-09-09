@@ -287,8 +287,14 @@ def _replay_parse_cost_question(question: str) -> dict[str, Any]:
     )
 
     compact_query = question.replace(" ", "")
-    product_match = re.search(r"产品[A-Za-z一二三四五六七八九十]+", compact_query)
-    product_text = product_match.group(0) if product_match else ""
+    part_match = re.search(
+        r"(?:产品[A-Za-z一二三四五六七八九十]+|零件[A-Za-z一二三四五六七八九十]+|[A-Z]{1,4}-\d{3})",
+        compact_query,
+        re.IGNORECASE,
+    )
+    part_text = part_match.group(0) if part_match else ""
+    if part_text == "产品A":
+        part_text = "FG-001"
     date_range = extract_date_range_from_question(question)
     period = extract_latest_period_from_question(question)
     if date_range:
@@ -301,7 +307,7 @@ def _replay_parse_cost_question(question: str) -> dict[str, Any]:
         intent = "cost_query"
     return {
         "intent": intent,
-        "product_text": product_text,
+        "part_text": part_text,
         "period": period,
         "date_range": date_range,
         "model": "fixture-model",

@@ -18,7 +18,7 @@ class IntentSlots(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     intent: Literal["cost_query", "cost_breakdown", "variance_analysis", "unknown"]
-    product_text: str = Field(default="", max_length=200)
+    part_text: str = Field(default="", max_length=200)
     period: str = ""
     start_date: str = ""
     end_date: str = ""

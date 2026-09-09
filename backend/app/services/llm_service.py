@@ -15,7 +15,7 @@ from app.settings import get_settings
 # Explicit test override only. Environment-backed values are resolved from Settings at
 # call time so importing this module never freezes runtime configuration.
 DEEPSEEK_MODEL: str | None = None
-PROMPT_VERSION = "deepseek-cost-prompts-v1"
+PROMPT_VERSION = "deepseek-cost-prompts-v2"
 
 
 def get_deepseek_model() -> str:
@@ -228,12 +228,32 @@ def _extract_json_object(text: str) -> dict[str, Any]:
 
 
 def extract_latest_period_from_question(question: str) -> str:
+    # Keep the original separators for ordinary expressions. Removing spaces
+    # can join a part number's trailing digits to the year (for example,
+    # ``FG-001 2026年6月``), defeating the numeric boundary.
     compact_query = question.replace(" ", "")
     normalized_periods: list[str] = []
     year_month_matches = re.findall(
-        r"(?<!\d)((?:20)?\d{2})年(1[0-2]|0?[1-9])月", compact_query
+        r"(?<!\d)((?:20)?\d{2})\s*年\s*(1[0-2]|0?[1-9])\s*月", question
     )
-    period_matches = re.findall(r"(?<!\d)((?:20)?\d{2})-(1[0-2]|0[1-9])", compact_query)
+    period_matches = re.findall(
+        r"(?<!\d)((?:20)?\d{2})\s*[-/]\s*(1[0-2]|0[1-9])", question
+    )
+    # Accept compact canonical part-number forms as well. These patterns are
+    # constrained to canonical hyphenated part numbers to avoid broad digit
+    # extraction from arbitrary text.
+    year_month_matches.extend(
+        re.findall(
+            r"(?:[A-Za-z0-9]+-)+\d{3}((?:20)?\d{2})年(1[0-2]|0?[1-9])月",
+            compact_query,
+        )
+    )
+    period_matches.extend(
+        re.findall(
+            r"(?:[A-Za-z0-9]+-)+\d{3}((?:20)?\d{2})-(1[0-2]|0[1-9])",
+            compact_query,
+        )
+    )
 
     if year_month_matches:
         normalized_periods.extend(
@@ -257,13 +277,28 @@ def extract_date_range_from_question(question: str) -> dict[str, str] | None:
     dated_mentions: list[tuple[int, str]] = []
     year_anchors: list[tuple[int, str]] = []
     full_cn_pattern = re.compile(
-        r"(?<!\d)((?:20)?\d{2})年(1[0-2]|0?[1-9])月([12]\d|3[01]|0?[1-9])日?"
+        r"(?<!\d)((?:20)?\d{2})\s*年\s*(1[0-2]|0?[1-9])\s*月\s*([12]\d|3[01]|0?[1-9])\s*日?"
     )
     dashed_pattern = re.compile(
-        r"(?<!\d)((?:20)?\d{2})[-/](1[0-2]|0?[1-9])[-/]([12]\d|3[01]|0?[1-9])"
+        r"(?<!\d)((?:20)?\d{2})\s*[-/]\s*(1[0-2]|0?[1-9])\s*[-/]\s*([12]\d|3[01]|0?[1-9])"
     )
-    for pattern in (full_cn_pattern, dashed_pattern):
-        for match in pattern.finditer(compact_query):
+    compact_part_date_patterns = (
+        re.compile(
+            r"(?:[A-Za-z0-9]+-)+\d{3}((?:20)?\d{2})年(1[0-2]|0?[1-9])月([12]\d|3[01]|0?[1-9])日?"
+        ),
+        re.compile(
+            r"(?:[A-Za-z0-9]+-)+\d{3}((?:20)?\d{2})[-/](1[0-2]|0?[1-9])[-/]([12]\d|3[01]|0?[1-9])"
+        ),
+    )
+    # Ordinary expressions are matched against the original text so a part
+    # number and a following year remain separate numeric tokens. A compact
+    # part-number pattern covers input where the caller omitted the separator.
+    for pattern, source in (
+        (full_cn_pattern, question),
+        (dashed_pattern, question),
+        *[(pattern, compact_query) for pattern in compact_part_date_patterns],
+    ):
+        for match in pattern.finditer(source):
             year, month, day = match.groups()
             normalized_year = _normalize_year(year)
             dated_mentions.append(
@@ -275,9 +310,9 @@ def extract_date_range_from_question(question: str) -> dict[str, str] | None:
             year_anchors.append((match.start(), normalized_year))
 
     shorthand_pattern = re.compile(
-        r"[到至和与、~—-](1[0-2]|0?[1-9])月([12]\d|3[01]|0?[1-9])日?"
+        r"[到至和与、~—-]\s*(1[0-2]|0?[1-9])月([12]\d|3[01]|0?[1-9])日?"
     )
-    for match in shorthand_pattern.finditer(compact_query):
+    for match in shorthand_pattern.finditer(question):
         prior_years = [
             year for position, year in year_anchors if position < match.start()
         ]
@@ -414,12 +449,12 @@ def parse_cost_question_with_llm(
             "role": "system",
             "content": (
                 "你是制造业成本 Agent 的问题理解节点。只输出 JSON，不要输出解释。"
-                "字段必须包含 intent、product_text、period、start_date、end_date。"
+                "字段必须包含 intent、part_text、period、start_date、end_date。"
                 "intent 只能是 cost_query、cost_breakdown、variance_analysis、unknown。"
                 "period 使用 YYYY-MM；如果用户提到多个期间，period 使用较晚的目标期间。"
                 "如果用户给出具体日期范围，start_date 和 end_date 使用 YYYY-MM-DD；"
                 "不能识别则用空字符串。"
-                "product_text 保留用户提到的产品名称，例如 产品A。不要生成成本金额。"
+                "part_text 保留用户提到的零件号或零件名称，例如 FG-001。不要生成成本金额。"
             ),
         },
         {"role": "user", "content": question},
@@ -465,7 +500,7 @@ def parse_cost_question_with_llm(
     date_range = extract_date_range_from_question(question)
     return {
         "intent": slots.intent,
-        "product_text": slots.product_text,
+        "part_text": slots.part_text,
         "period": (
             date_range["end_date"][:7]
             if date_range
@@ -560,32 +595,30 @@ def classify_route_with_llm(
 
 
 def generate_cost_analysis_with_llm(
-    product: dict[str, Any],
+    part: dict[str, Any],
     period: str,
     calculation_result: dict[str, Any],
-    comparison_result: dict[str, Any] | None = None,
-    date_range: dict[str, str] | None = None,
     status_bar: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     facts = {
-        "product_name": product["product_name"],
+        "part_number": part["part_number"],
+        "part_description": part["part_description"],
         "period": period,
-        "output_qty": calculation_result["output_qty"],
-        "total_cost": calculation_result["total_cost"],
-        "unit_cost": calculation_result["unit_cost"],
-        "process_breakdown": calculation_result["process_breakdown"],
-        "cost_composition": calculation_result["cost_composition"],
-        "comparison": comparison_result,
-        "date_range": date_range,
+        "batch_summary": calculation_result["batch_summary"],
+        "manufacturing_view": calculation_result["manufacturing_view"],
+        "material_labor_overhead_view": calculation_result[
+            "material_labor_overhead_view"
+        ],
+        "variable_fixed_view": calculation_result["variable_fixed_view"],
     }
     messages: list[dict[str, str]] = [
         {
             "role": "system",
             "content": (
                 "你是制造业成本分析助手。只能基于用户提供的 JSON 事实写一段中文分析。"
-                "不要新增任何金额、产量、期间或产品。不要说数据来自真实 ERP。"
-                "如果 comparison 不为空，说明单位成本变化和主要变化工序。"
-                "如果 date_range 不为空，说明这是按日级记录精确汇总的区间核算。"
+                "不要新增任何金额、数量、批次、期间或零件。不要说数据来自真实 ERP。"
+                "围绕合计单位成本2、料工费构成、变动/固定成本和质量数据说明。"
+                "所有金额和比例必须逐字引用输入 JSON，禁止自行计算。"
                 "长度控制在 100 字以内。"
             ),
         },
