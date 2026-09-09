@@ -1,0 +1,87 @@
+[
+  {
+    "id": "single_month_cost",
+    "turns": ["查询产品A 2026年6月单位成本，并说明成本构成"],
+    "expect": {
+      "outcome": "completed",
+      "period": "2026-06",
+      "unit_cost": 13.9,
+      "total_cost": 139000,
+      "effective_capabilities": ["system_help", "cost_calculation"],
+      "trace_redacted": true,
+      "clarification_before_cost_data": true,
+      "event_nodes": [
+        "load_conversation_context",
+        "policy_gate",
+        "select_route",
+        "understand_question",
+        "merge_context_slots",
+        "clarification_gate",
+        "resolve_product",
+        "load_cost_inputs",
+        "calculate_cost",
+        "build_report_json",
+        "final_answer"
+      ]
+    }
+  },
+  {
+    "id": "continuous_followup",
+    "turns": [
+      "查询产品A 2026年6月单位成本",
+      "那五月呢？"
+    ],
+    "expect": {
+      "outcome": "completed",
+      "period": "2026-05",
+      "unit_cost": 13.2,
+      "trace_redacted": true,
+      "clarification_before_cost_data": true
+    }
+  },
+  {
+    "id": "clarification_resume",
+    "turns": [
+      "查一下成本",
+      "产品A",
+      "2026年6月"
+    ],
+    "expect": {
+      "outcome": "completed",
+      "period": "2026-06",
+      "unit_cost": 13.9,
+      "clarification_count": 2,
+      "trace_redacted": true,
+      "clarification_before_cost_data": true
+    }
+  },
+  {
+    "id": "exact_date_range",
+    "turns": ["核算产品A 2026年5月15日到2026年6月10日之间的成本"],
+    "expect": {
+      "outcome": "completed",
+      "period": "2026-05-15 至 2026-06-10",
+      "unit_cost": 13.48,
+      "total_cost": 119111.84,
+      "trace_redacted": true,
+      "clarification_before_cost_data": true
+    }
+  },
+  {
+    "id": "system_help_route",
+    "turns": ["这个系统的工作流是什么？"],
+    "expect": {
+      "outcome": "completed",
+      "effective_route": "system_help",
+      "has_report": false,
+      "effective_capabilities": ["system_help", "cost_calculation"],
+      "trace_redacted": true,
+      "event_nodes": [
+        "load_conversation_context",
+        "policy_gate",
+        "select_route",
+        "final_answer"
+      ]
+    }
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "product_id": "P001",
+    "product_name": "产品A",
+    "spec": "黑色外壳"
+  },
+  {
+    "product_id": "P002",
+    "product_name": "产品B",
+    "spec": "白色支架"
+  },
+  {
+    "product_id": "P003",
+    "product_name": "产品C",
+    "spec": "金属面板"
+  }
+]

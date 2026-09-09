@@ -1,0 +1,9 @@
+target-version = "py312"
+line-length = 88
+cache-dir = ".ruff_cache"
+extend-exclude = [
+    ".pytest_cache",
+    ".venv",
+    "__pycache__",
+    "evaluation",
+]

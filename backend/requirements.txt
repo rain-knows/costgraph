@@ -1,0 +1,14 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+langgraph==0.5.3
+langgraph-checkpoint-postgres==2.0.25
+pydantic==2.11.7
+pydantic-settings==2.11.0
+pytest==8.4.1
+ruff==0.16.2
+httpx==0.28.1
+python-dotenv==1.2.2
+jsonschema>=4.23,<5
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2,<4
+alembic>=1.15,<2
