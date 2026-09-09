@@ -437,10 +437,11 @@ function Start-Services {
             Write-Step "Backend is already running."
         }
 
+        $workerOut = Join-Path $LogDir "worker.out.log"
+        $workerErr = Join-Path $LogDir "worker.err.log"
+        $workerProcess = $null
         $savedWorkerProcess = if ($null -ne $savedWorkerPid) { Get-Process -Id $savedWorkerPid -ErrorAction SilentlyContinue } else { $null }
         if ($null -eq $savedWorkerProcess) {
-            $workerOut = Join-Path $LogDir "worker.out.log"
-            $workerErr = Join-Path $LogDir "worker.err.log"
             Set-Content -LiteralPath $workerOut -Value "" -Encoding UTF8
             Set-Content -LiteralPath $workerErr -Value "" -Encoding UTF8
             Write-Step "Starting PostgreSQL Agent worker..."
@@ -452,14 +453,10 @@ function Start-Services {
                 -RedirectStandardOutput $workerOut `
                 -RedirectStandardError $workerErr `
                 -PassThru
-            Start-Sleep -Milliseconds 750
-            if ($workerProcess.HasExited) {
-                $errorTail = Get-Content -LiteralPath $workerErr -Tail 20 -ErrorAction SilentlyContinue
-                throw "Worker failed to start. Check $workerErr.`n$errorTail"
-            }
             $startedWorkerPid = $workerProcess.Id
         }
         else {
+            $workerProcess = $savedWorkerProcess
             Write-Step "Worker is already running."
         }
 
