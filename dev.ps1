@@ -78,11 +78,32 @@ function Test-Url {
 function Wait-Url {
     param(
         [string]$Url,
-        [int]$TimeoutSeconds = 30
+        [int]$TimeoutSeconds = 30,
+        [System.Diagnostics.Process]$Process = $null,
+        [string]$ProcessLabel = "Process",
+        [string]$ErrorLogPath = ""
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
+        if ($null -ne $Process) {
+            try {
+                $Process.Refresh()
+                if ($Process.HasExited) {
+                    $errorTail = if ($ErrorLogPath -and (Test-Path -LiteralPath $ErrorLogPath)) {
+                        (Get-Content -LiteralPath $ErrorLogPath -Tail 20 -ErrorAction SilentlyContinue) -join [Environment]::NewLine
+                    }
+                    else {
+                        ""
+                    }
+                    throw "$ProcessLabel exited before $Url became ready.`n$errorTail"
+                }
+            }
+            catch [System.InvalidOperationException] {
+                throw "$ProcessLabel exited before $Url became ready."
+            }
+        }
+
         if (Test-Url -Url $Url) {
             return $true
         }
@@ -427,9 +448,14 @@ function Start-Services {
                 -PassThru
             $startedBackendPid = $backendProcess.Id
 
-            if (-not (Wait-Url -Url $BackendUrl -TimeoutSeconds 30)) {
+            if (-not (Wait-Url `
+                    -Url $BackendUrl `
+                    -TimeoutSeconds 30 `
+                    -Process $backendProcess `
+                    -ProcessLabel "Backend" `
+                    -ErrorLogPath $backendErr)) {
                 $errorTail = Get-Content -LiteralPath $backendErr -Tail 20 -ErrorAction SilentlyContinue
-                throw "Backend failed to start. Check $backendErr.`n$errorTail"
+                throw ("Backend failed to start. Check {0}.`n{1}" -f $backendErr, $errorTail)
             }
             $startedBackendPid = Get-PortProcessId -Port 8000
         }
@@ -460,7 +486,12 @@ function Start-Services {
             Write-Step "Worker is already running."
         }
 
-        if (-not (Wait-Url -Url $ReadyUrl -TimeoutSeconds 30)) {
+        if (-not (Wait-Url `
+                -Url $ReadyUrl `
+                -TimeoutSeconds 30 `
+                -Process $workerProcess `
+                -ProcessLabel "Worker" `
+                -ErrorLogPath $workerErr)) {
             $workerErrorTail = Get-Content -LiteralPath (Join-Path $LogDir "worker.err.log") -Tail 20 -ErrorAction SilentlyContinue
             throw "Runtime did not become ready. Check Worker and database connectivity.`n$workerErrorTail"
         }
@@ -483,9 +514,14 @@ function Start-Services {
                 -PassThru
             $startedFrontendPid = $frontendProcess.Id
 
-            if (-not (Wait-Url -Url $FrontendUrl -TimeoutSeconds 30)) {
+            if (-not (Wait-Url `
+                    -Url $FrontendUrl `
+                    -TimeoutSeconds 30 `
+                    -Process $frontendProcess `
+                    -ProcessLabel "Frontend" `
+                    -ErrorLogPath $frontendErr)) {
                 $errorTail = Get-Content -LiteralPath $frontendErr -Tail 20 -ErrorAction SilentlyContinue
-                throw "Frontend failed to start. Check $frontendErr.`n$errorTail"
+                throw ("Frontend failed to start. Check {0}.`n{1}" -f $frontendErr, $errorTail)
             }
             $startedFrontendPid = Get-PortProcessId -Port 5173
         }
