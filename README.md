@@ -1,6 +1,6 @@
 # CostGraph
 
-CostGraph 是面向制造业成本分析的真实应用：LLM 负责理解请求与生成解释，服务端负责权限、数据范围、状态和 Decimal 金额计算。首版围绕“产品 + 期间/日期范围”打通成本数据、Agent 会话和可追溯报表，不展示尚未实现的批次、BOM、异常或审批流程。
+CostGraph 是面向制造业成本分析的真实应用：LLM 负责理解请求与生成解释，服务端负责权限、数据范围、批次关系、状态和 Decimal 金额计算。当前闭环以“购置/工艺事件 -> 实际领用关系 -> 产成品批次”为成本图，提供六类制造成本、料工费、变动/固定三视图及逐笔来源追溯。库存结存、返工分支、副产品、异常和审批不在当前能力中。
 
 ## 技术与目录
 
@@ -11,7 +11,7 @@ CostGraph 是面向制造业成本分析的真实应用：LLM 负责理解请求
 ```text
 frontend/        React 应用
 backend/         FastAPI、Agent、Worker、Alembic 与测试
-data/            只用于导入的样例成本数据
+data/            只用于导入的零件、事件、投入边和费用样例
 design-systems/  pinned IBM-inspired OpenDesign 包
 docs/            原子事实文档与迁移记录
 scripts/         仓库级检查脚本
@@ -38,7 +38,7 @@ backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.ba
 .\dev.ps1 start
 ```
 
-打开 `http://127.0.0.1:5173/`，API 健康检查为
+导入会读取 `parts.json`、`cost_events.json`、`cost_event_inputs.json` 和 `cost_records.json`；退出码 0 后仍需确认导入批次为 `published` 且错误数为 0。打开 `http://127.0.0.1:5173/`，API 健康检查为
 `http://127.0.0.1:8000/api/health`。进程和日志由同一入口管理：
 
 ```powershell
@@ -48,8 +48,7 @@ backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.ba
 .\dev.ps1 restart
 ```
 
-环境变量可放在 `backend/.env`；密码和 API Key 不得提交。完整迁移、导入、健康门禁和故障顺序见
-[`docs/operations/runbook.md`](docs/operations/runbook.md)。
+环境变量可放在 `backend/.env`；密码和 API Key 不得提交。完整格式和黄金批次口径见 [`docs/data/cost-accounting-format.md`](docs/data/cost-accounting-format.md)，迁移、导入、健康门禁和故障顺序见 [`docs/operations/runbook.md`](docs/operations/runbook.md)。
 
 ## 验证
 

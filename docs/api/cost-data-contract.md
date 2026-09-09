@@ -1,6 +1,34 @@
 # API/成本数据契约
 
-三条接口均为只读，使用服务端注入的 `tenant_id + principal_id + data_scope` 查询当前已发布快照。客户端不能提交租户、主体、金额或授权范围。响应由 `backend/app/schemas/cost_data.py` 的 Pydantic 契约约束；Decimal 在 JSON 中作为字符串传输，币种固定为 `CNY`。
+三条 canonical 接口均为只读，使用服务端注入的 `tenant_id + principal_id + data_scope` 查询当前已发布快照。客户端不能提交租户、主体、金额、图关系或授权范围。响应由 `backend/app/schemas/cost_data.py` 的 Pydantic 契约约束；所有 Decimal 在 JSON 中作为字符串传输，币种固定为 `CNY`。
+
+## 公共值对象
+
+`PartIdentity` 包含 `part_id/part_number/part_description/part_type/product_family`。
+
+`CostMetric` 包含：
+
+| 字段 | 语义 |
+| --- | --- |
+| `amount` | 批次总金额，两位 Decimal 字符串 |
+| `unit_cost` | 总金额除以完工总量，两位 Decimal 字符串 |
+
+批次身份字段固定为：
+
+- `finished_batch_id/event_id/part/period/completion_time`
+- `cost_center_code/cost_center_name/work_order_number/lot_number/process_code/process_name`
+- `qualified_quantity/defective_quantity/completed_quantity/quality_rate/unit`
+- `machine_hours/labor_hours`
+
+数量和工时为四位 Decimal 字符串；`completed_quantity = qualified_quantity + defective_quantity`；`quality_rate` 是合格量占完工总量的两位百分数。
+
+每个批次返回三套已计算视图：
+
+- `manufacturing_view`：`groups/total`。每个组含 `group_code/group_label/metric/share/leaves`；每个叶项含 `cost_code/label/metric/share`。六组和全部 45 个制造费用叶代码按固定顺序返回，零值不省略。
+- `material_labor_overhead_view`：`material/labor/overhead/total`，每项为 `CostMetric`。
+- `variable_fixed_view`：`variable_cost_1/fixed_cost_1/manufacturing_total/after_sales_compensation/transportation/storage_fee/variable_cost_2/fixed_cost_2/total_cost_2`，每项为 `CostMetric`。
+
+费用分组、公式、舍入及不良品承接规则见[成本核算格式](../data/cost-accounting-format.md)。前端不得从叶项重新计算权威汇总。
 
 ## 总览
 
@@ -13,54 +41,127 @@ GET /api/cost-data/overview?period=YYYY-MM
 | 字段 | 语义 |
 | --- | --- |
 | `period/currency` | 请求期间与 `CNY` |
-| `product_count` | 该期间有可计算数据且在 scope 内的产品数 |
-| `total_output_qty` | 产品合格产量之和，2 位 Decimal 字符串 |
-| `total_cost` | 产品总成本之和，2 位 Decimal 字符串 |
-| `average_unit_cost` | `total_cost / total_output_qty`，无产量时为 `null` |
-| `comparison` | 有上月可比数据时返回 `previous_period`、总成本/单位成本差额与百分比，否则 `null` |
+| `batch_count` | scope 内该期间的最终产成品批次数 |
+| `part_count` | 上述批次覆盖的产成品零件数 |
+| `completed_quantity` | 完工总量；仅作质量规模汇总，不用于跨零件单位成本 |
+| `qualified_quantity/defective_quantity/quality_rate` | 质量数量与服务端计算的合格率 |
+| `manufacturing_cost` | 六类制造成本总金额 |
+| `post_manufacturing_cost` | 售后赔偿、运输和制造后仓储总金额 |
+| `total_cost` | 制造成本与制造后费用合计 |
 
-期间无数据时返回合法的零值总览，不伪造产品或趋势。
+总览不返回跨零件平均单位成本。期间无数据时返回合法的零值总览，不伪造批次、零件或趋势。
 
-## 产品列表
+## 产成品批次列表
 
 ```text
-GET /api/cost-data/products?period=YYYY-MM&query=&sort=product_id&page=1&page_size=20
+GET /api/cost-data/finished-batches?period=YYYY-MM&query=&cost_center_code=&sort=completion_time_desc&page=1&page_size=20
 ```
 
-- `period` 必填且必须是合法月份。
-- `query` 最长 200 字符，对产品 ID、名称与规格进行不区分大小写的包含搜索。
-- `sort` 允许 `product_id/product_name/total_cost_asc/total_cost_desc/unit_cost_asc/unit_cost_desc`，默认 `product_id`。
+- `period` 必填且必须是合法月份，按最终事件 `completion_time` 归属。
+- `query` 最长 200 字符，对零件号、零件描述、成本中心、工单号和批号进行包含搜索。
+- `cost_center_code` 是精确成本中心过滤。
+- `sort` 只允许 `completion_time_asc/completion_time_desc/unit_cost_asc/unit_cost_desc`，默认 `completion_time_desc`；单位成本排序使用服务端 `total_cost_2.unit_cost`。
 - `page >= 1`；`page_size` 为 1 到 100，默认 20。
 
-响应 `ProductPeriodList` 包含 `period/items/page/page_size/total`。每个 `ProductPeriodSummary` 包含产品 ID、名称、可空规格、期间、币种、产量、总成本、单位成本，以及可空上月比较。比较对象额外给出上月总成本、上月单位成本、差额和百分比。无匹配数据时 `items=[]` 且 `total=0`。
+响应 `FinishedBatchCostList` 包含 `period/items/page/page_size/total`。每个 item 包含公共批次身份和 `manufacturing_view/material_labor_overhead_view/variable_fixed_view`。无匹配数据时 `items=[]` 且 `total=0`。
 
-## 产品详情
+## 批次详情与追溯图
 
 ```text
-GET /api/cost-data/products/{product_id}?period=YYYY-MM
+GET /api/cost-data/finished-batches/{finished_batch_id}
 ```
 
-响应 `ProductPeriodDetail`：
+响应 `FinishedBatchCostDetail`，包含与列表相同的批次身份、三套视图及完整 `trace: CostTraceGraph`。服务端以当前批次的最终事件为根，返回为其成本提供贡献的可见子图。
 
-- `product`：`product_id/product_name/spec`。
-- `period/currency/output_qty/total_cost/unit_cost/comparison`：与列表使用同一计算和比较服务。
-- `processes`：按 `process_sort + process_code` 排序；每项包含工序代码、名称、顺序、总成本和成本项。
-- `processes[].items`：`cost_item/label/amount/source_record_count`，成本项为材料、人工、设备、能耗或制造费用。
-- `source_summary`：产量记录数、成本明细记录数、来源起止日期和去重后的来源系统，不返回原始记录或敏感载荷。
+`CostTraceGraph` 固定包含：
 
-当前详情层级严格为“产品 -> 工序 -> 成本项 -> 来源摘要”；接口不推断批次节点、BOM、半成品或异常工单。
+| 字段 | 结构与语义 |
+| --- | --- |
+| `root_event_id` | 最终产成品事件 ID |
+| `nodes` | 去重后的事件节点；一个事件只出现一次 |
+| `edges` | 上游输出到下游工艺事件的实际领用边 |
+| `records` | 子图内逐笔费用及来源记录 |
 
-## 计算与比较
+节点包含 `event_id/event_type/output_batch_id/part/completion_time/cost_center_code/cost_center_name/work_order_number/lot_number/process_code/process_name/qualified_quantity/defective_quantity/completed_quantity/unit`，以及：
 
-- 总成本为范围内成本项 Decimal 求和；单位成本为总成本除以合格产量。
-- 金额、数量和单位成本输出 2 位，使用 `ROUND_HALF_UP`。
-- 比较期间为自然上月；百分比为 `delta / previous * 100` 并保留 2 位。上期基数为零时百分比返回 `0.00`，没有上月数据时整个比较为 `null`。
-- 总览、列表、详情、Agent 报告和 Artifact 必须复用同一确定性计算服务，不允许前端独立重算权威结果。
+- `direct_costs`：事件本次发生费用向量。
+- `inherited_costs`：所有上游边分配到本事件的费用向量。
+- `accumulated_costs`：本次与继承费用之和。
+- `display_unit_cost`：累计总额除以完工总量。
+- `transfer_unit_cost`：累计总额除以合格量，用于向后续工序转移不良品成本。
+
+三个费用向量结构均为 `items/total_amount`；每个 item 为 `cost_code/cost_group/label/amount`。48 个叶项使用稳定顺序并以金额字符串传输。
+
+投入边包含 `input_id/source_event_id/target_event_id/consumed_quantity/unit/allocation_ratio/allocated_costs`。`allocation_ratio` 是 `consumed_quantity / source.qualified_quantity` 的六位 Decimal 比例；由于数量保留四位而展示比例保留六位，极小但合法的比例可能显示为 `0.000000`，服务端仍按未舍入 Decimal 比例分配金额。`allocated_costs` 使用与节点相同的费用向量结构。树形前端遇到共享上游可显示引用，但不得复制节点金额。
+
+来源记录包含 `cost_record_id/event_id/cost_code/cost_group/cost_label/amount/currency/incurred_at/source_system/source_document_no/source_document_line/source_record_id/raw_payload`。`raw_payload` 仅供详情审计展示，服务端计算不读取它。
+
+## 响应示例
+
+```json
+{
+  "period": "2026-06",
+  "items": [
+    {
+      "finished_batch_id": "FG-A-2026-06",
+      "event_id": "E-FG-001",
+      "part": {
+        "part_id": "PART-FG-A",
+        "part_number": "FG-A",
+        "part_description": "装饰总成 A",
+        "part_type": "finished_good",
+        "product_family": "装饰件"
+      },
+      "period": "2026-06",
+      "completion_time": "2026-06-30T18:00:00+08:00",
+      "cost_center_code": "CC-ASSEMBLY",
+      "cost_center_name": "装配车间",
+      "work_order_number": "WO-FG-001-06",
+      "lot_number": "LOT-FG-001-06",
+      "process_code": "ASSEMBLY",
+      "process_name": "装配",
+      "qualified_quantity": "950.0000",
+      "defective_quantity": "50.0000",
+      "completed_quantity": "1000.0000",
+      "quality_rate": "95.00",
+      "unit": "件",
+      "machine_hours": "120.0000",
+      "labor_hours": "260.0000",
+      "manufacturing_view": {
+        "groups": [],
+        "total": {"amount": "50000.00", "unit_cost": "50.00"}
+      },
+      "material_labor_overhead_view": {
+        "material": {"amount": "20000.00", "unit_cost": "20.00"},
+        "labor": {"amount": "12000.00", "unit_cost": "12.00"},
+        "overhead": {"amount": "18000.00", "unit_cost": "18.00"},
+        "total": {"amount": "50000.00", "unit_cost": "50.00"}
+      },
+      "variable_fixed_view": {
+        "variable_cost_1": {"amount": "30000.00", "unit_cost": "30.00"},
+        "fixed_cost_1": {"amount": "20000.00", "unit_cost": "20.00"},
+        "manufacturing_total": {"amount": "50000.00", "unit_cost": "50.00"},
+        "after_sales_compensation": {"amount": "1000.00", "unit_cost": "1.00"},
+        "transportation": {"amount": "2000.00", "unit_cost": "2.00"},
+        "storage_fee": {"amount": "500.00", "unit_cost": "0.50"},
+        "variable_cost_2": {"amount": "33000.00", "unit_cost": "33.00"},
+        "fixed_cost_2": {"amount": "20500.00", "unit_cost": "20.50"},
+        "total_cost_2": {"amount": "53500.00", "unit_cost": "53.50"}
+      }
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+示例裁剪了 `manufacturing_view.groups`，正式响应始终返回全部六组和固定叶项。
 
 ## 错误
 
-- 非法期间、sort 或分页：`422 validation_error`。
-- 产品/期间不存在，或不在数据范围内：`404 cost_data_not_found`。
+- 非法期间、sort、过滤或分页：`422 validation_error`。
+- 批次不存在，或其追溯链不在数据范围内：`404 cost_data_not_found`。
 - 主体没有成本读取能力：`403 cost_data_access_denied`。
 - PostgreSQL 暂时不可用：`503 database_unavailable`。
 

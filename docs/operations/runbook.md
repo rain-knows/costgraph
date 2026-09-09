@@ -15,7 +15,9 @@ COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
 
 本地非敏感配置写入 `backend/.env`，环境变量优先。不要打印或提交连接密码和 API Key。
 
-## 首次迁移与导入
+## 空库迁移与导入
+
+当前唯一 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换。已经运行旧 baseline 的开发数据库必须由操作者显式删除并重建专用数据库；`dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
 
 ```powershell
 cd D:\work\costgraph
@@ -31,7 +33,14 @@ $batch = backend\.venv\Scripts\python.exe backend\scripts\import_cost_data.py | 
 backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.batch_id
 ```
 
-应用不会自动创建业务表。仓库只保留 revision `20260907_0001` 这一条 CostGraph baseline；空库一次 `upgrade head` 即得到最终 schema。导入退出码 0 仍需核对批次为 `published`、错误数为 0，并用产品 A 的 `2026-06` 口径验收。
+导入命令默认读取 `data/samples/parts.json`、`cost_events.json`、`cost_event_inputs.json` 和 `cost_records.json`。退出码 0 仍需核对：
+
+- 批次状态为 `published`，`error_rows=0`。
+- 四类行数与样例文件一致。
+- 3 个产成品跨 2 个期间形成 6 个最终批次。
+- 当前租户只有一个 `published` 快照。
+
+格式、关系和 48 项代码见[成本核算格式](../data/cost-accounting-format.md)。
 
 ## 启动与健康
 
@@ -55,6 +64,24 @@ Invoke-RestMethod http://127.0.0.1:8000/api/readyz
 
 `livez` 只检查进程，`readyz` 检查数据库、Alembic head 和 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek。
 
+## 黄金批次 API 检查
+
+以下命令从样例本身定位完工 `1000`、合格 `950`、不良 `50` 的黄金事件，避免把批次 ID 或期间复制成第二份配置：
+
+```powershell
+$events = Get-Content -Raw data\samples\cost_events.json | ConvertFrom-Json
+$goldenEvent = $events | Where-Object {
+    [decimal]$_.qualified_quantity -eq 950 -and [decimal]$_.defective_quantity -eq 50
+} | Select-Object -First 1
+$period = ([DateTimeOffset]::Parse($goldenEvent.completion_time)).ToString("yyyy-MM")
+$overview = Invoke-RestMethod "http://127.0.0.1:8000/api/cost-data/overview?period=$period"
+$list = Invoke-RestMethod "http://127.0.0.1:8000/api/cost-data/finished-batches?period=$period&page=1&page_size=100"
+$detail = Invoke-RestMethod "http://127.0.0.1:8000/api/cost-data/finished-batches/$($goldenEvent.output_batch_id)"
+$detail | ConvertTo-Json -Depth 20
+```
+
+详情必须满足：六类金额 `20000/8000/2000/4000/3000/13000`，制造成本 `50000.00`，料工费单位成本 `20.00/12.00/18.00`，制造单位成本1 `50.00`，变动/固定成本1 `30.00/20.00`，三项制造后单位成本 `1.00/2.00/0.50`，以及变动成本2、固定成本2、合计单位成本2 `33.00/20.50/53.50`。详情、Agent report schema `2.0` 和 Artifact 必须一致。
+
 ## 验证矩阵
 
 ```powershell
@@ -66,25 +93,28 @@ backend\.venv\Scripts\python.exe backend\scripts\verify_agent.py
 backend\.venv\Scripts\python.exe backend\scripts\evaluate_agent.py
 Push-Location frontend
 npm test
-npm run build
+npm run test:bundle
 Pop-Location
 .\scripts\check_docs_sync.ps1
 git diff --check
 ```
 
-- 离线测试覆盖路由、澄清、Decimal 结果、Runtime/Harness、SSE reducer、Replay 和固定 fixture Eval。
-- PostgreSQL 集成覆盖导入发布、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。测试数据库未配置导致的 skip 必须单独报告。
-- 真实 DeepSeek 检查单独执行并标记时间、provider、model 和结果；它可能产生少量费用，不能成为默认测试副作用。
+- 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
+- 成本测试覆盖多投入、部分领用、同批次分流、不良成本承接、全量领用尾差、三视图恒等式和黄金结果。
+- PostgreSQL 集成覆盖发布、数据范围、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。未配置 `TEST_COST_DATABASE_URL` 导致的 skip 必须单独报告。
+- 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `2.0` 和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
+- 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态。
 - 生产构建必须通过 bundle 门禁，初始 JS 小于 500 KB；页面与 ECharts 保持路由级懒加载。
-- 浏览器验收覆盖深链、前进/后退、加载/空/错误/无权限、浅/深主题及桌面/移动截图，无重叠和 token 偏移。
+- 浏览器验收覆盖成本页和批次详情的桌面/移动、浅/深主题，无表头错位、文字溢出、遮挡或横向滚动丢列。
 
-产品 A、`2026-06` 的确定性验收值为：四道工序成本依次 `61200.00/29000.00/26400.00/22400.00`，总成本 `139000.00`，单位成本 `13.90`。成本详情、Agent 报告和 Artifact 必须一致。
+真实 DeepSeek 检查单独执行并记录时间、provider、model 和结果；它可能产生少量费用，不能成为默认测试副作用。
 
 ## 故障顺序
 
 1. 先查 `/api/health` 和 `/api/readyz` 的 database、migration、worker 与 `runtime_ready`。
 2. 确认连接配置存在但不要打印秘密；检查 `alembic current`、8000/5173 端口和 `dev.ps1 logs`。
-3. 检查 Run 状态、attempt、可用时间、租约 owner/过期时间和最后事件 ID；有效租约期间不要手工重复执行。
-4. 检查当前 published 批次、导入错误和产品/期间数据。
-5. 检查服务端 tenant、principal 和 data scope。
-6. 最后再做显式 DeepSeek 连通性检查。
+3. 检查当前 `published` 导入批次、错误码和四类记录计数；旧 schema 数据库不能通过重复执行同 revision 的 `upgrade head` 转换。
+4. 检查完工批次所属期间、追溯 DAG、领用总量、单位和 48 项费用代码。
+5. 检查服务端 tenant、principal 和 data scope；最终批次及其整条上游追溯链必须同时可见。
+6. 检查 Run 状态、attempt、可用时间、租约 owner/过期时间和最后事件 ID；有效租约期间不要手工重复执行。
+7. 最后再做显式 DeepSeek 连通性检查。

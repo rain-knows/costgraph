@@ -20,6 +20,8 @@ Public Trace schema 为 `2.0`，供 Inspector 和报表展示；Audit Trace sche
 
 两类 Trace 均禁止保存 Prompt、会话正文、模型正文、reasoning content、完整工具参数、确定性计算原始输入、SQL、密钥和成本来源记录 ID。哈希只用于一致性与审计关联，不能替代原始业务事实。
 
+注意：业务成本详情中的 `CostTraceGraph.records` 是受权限和快照约束的只读来源明细，不属于 Runtime Public/Audit Trace；它可以返回 `cost_record_id`、费用代码和来源单据，以满足成本审计，但不得被复制进模型 Trace 或会话事件。
+
 ## Replay 与 Eval
 
 Replay 注入固定 Fixture Provider 和 Tool Registry，重新执行同一 LangGraph，而不是读取已保存结果。它按顺序消费响应，并验证脱敏参数摘要、输入/输出 Schema、节点顺序、能力/策略快照、`outcome` 与稳定 `report_json`；额外调用、剩余响应、顺序或摘要不一致均失败。离线 Eval 使用 `backend/evaluation/fixture_model_provider.py` 显式注入同类 Provider；生产图没有隐式模型回退。

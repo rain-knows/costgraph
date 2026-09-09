@@ -6,7 +6,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 
 | schema | owner | 表 |
 | --- | --- | --- |
-| `cost_data` | 成本数据服务 | `data_load_batches`、`data_load_errors`、`products`、`production_outputs`、`process_cost_entries` |
+| `cost_data` | 成本数据服务 | `data_load_batches`、`data_load_errors`、`parts`、`cost_events`、`cost_event_inputs`、`cost_records` |
 | `agent_runtime` | 会话与运行服务 | `conversations`、`turns`、`messages`、`audit_traces`、`agent_runs`、`agent_run_events`、`agent_workers` |
 | `agent_checkpoint` | LangGraph 恢复状态 | `checkpoint_migrations`、`checkpoints`、`checkpoint_blobs`、`checkpoint_writes` |
 | `agent_output` | 结构化产出服务 | `artifacts` |
@@ -23,13 +23,13 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 
 ## 读取与所有权边界
 
-- 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产品和期间/日期范围，并应用服务端 `ExecutionContext.data_scope`。
+- 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产成品零件和期间，并应用服务端 `ExecutionContext.data_scope`。
 - 会话、Turn、消息、Run、Trace 和 Artifact 的业务查询必须匹配 `tenant_id + principal_id`。
 - Worker 只领取数据库中已固化可信 owner 快照的 Run，不从客户端重新解释主体。
-- `raw_payload`/JSONB 只做导入追溯，不直接参与金额计算。
+- `raw_payload`/JSONB 只做导入追溯，不直接参与金额计算。累计成本、单位成本、占比和三视图汇总均为查询时派生值，不落库。
 - Artifact 只保存业务关联 ID，不对 Runtime 表建跨 schema 外键；删除会话不会删除独立历史产出。
 - checkpoint `thread_id` 固定为 `run_id`，没有公共读取 API，并按终态保留规则清理。
 
-字段和约束见 [数据字典](data-dictionary.md)，导入发布规则见 [治理与质量](governance.md)。
+字段和约束见 [数据字典](data-dictionary.md)，字段格式、48 项费用代码与公式见[成本核算格式](cost-accounting-format.md)，导入发布规则见 [治理与质量](governance.md)。
 
 依据：`backend/app/settings.py`、`backend/app/db/engine.py`、`backend/app/db/models.py`、`backend/alembic/versions/`。

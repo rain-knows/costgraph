@@ -1,81 +1,67 @@
 # Agent Demo 到 CostGraph 迁移执行记录
 
-本文件记录迁移阶段、状态与验收证据，不是当前接口或架构的事实 owner。当前行为以 [`docs/README.md`](../README.md) 指向的原子文档、代码、唯一 baseline 和测试为准。
+本文件只记录迁移决策、阶段状态和实际验收证据，不是当前接口或架构的事实 owner。当前行为以 [`docs/README.md`](../README.md) 指向的原子文档、代码、唯一 baseline 和测试为准。
 
 ## 决策
 
 - `D:\work\costgraph` 是唯一主仓；`D:\work\agent_demo` 仅作一次性迁移源，不双向维护，不读取其数据库或历史运行数据。
 - 保留 CostGraph 的 React 18、Vite 7、TypeScript、Tailwind 3、ECharts 6、Lucide、IBM Plex 前端栈；后端保留 Python 3.12、FastAPI、LangGraph、Pydantic 2、SQLAlchemy、PostgreSQL、Alembic 和 DeepSeek。
 - 运行面只有一套 LangGraph 外循环、PostgreSQL Worker 和 checkpoint；不引入 Agents SDK、MCP、第二套编排框架或多 Agent。
-- 首版闭环以“产品 + 期间/日期范围”为边界。生产批次、BOM、异常工单和审批按后续阶段独立演进。
+- 成本事实模型为“购置/工艺事件 -> 实际批次投入 -> 单一输出批次 -> 逐笔费用”；使用固定 48 项费用代码和服务端 Decimal 卷积。
+- 实际投入图不是计划 BOM 或库存台账；当前不实现库存结存、返工分支、副产品、异常、审批和导出。
 - UI 行为和 API client 只做适配复用；不迁入 Agent Demo 的 React 19/shadcn 视觉组件，所有展示按根 [`DESIGN.md`](../../DESIGN.md) 重写。
-- 废弃接口、字段、存储适配器、旧迁移链和历史业务数据直接删除，不提供兼容层、回退或转换。
+- 废弃表、接口、字段、存储适配器、旧迁移链和历史业务数据直接删除，不提供兼容层、回退、旧库升级或 Artifact 转换。
 
-## 复用边界
+## 复用与替换边界
 
-| 分类 | 迁移结论 |
+| 分类 | 结论 |
 | --- | --- |
-| 直接复用 | LangGraph 图；Runtime/Harness；能力、主体与数据范围校验；Provider/Tool Registry；Worker、租约与 checkpoint；SSE 事件、续传与去重；幂等、取消和 finalizing；Decimal 成本计算；Artifact；Trace/Replay/Eval；样例导入与发布机制。 |
-| 适配复用 | 会话 API client、SSE reducer、澄清卡片、运行状态栏、Runtime 检查器和报表查询行为。仅迁移行为与类型，使用 CostGraph IBM UI 和 canonical API 重写展示。 |
-| 不迁移 | Agent Demo 整套 React 19/shadcn 界面；旧 Alembic 链；历史会话、Run、Trace、Artifact 和运行数据；`turn_requests`、`readonly_qa`、`enabled_features`；`DATABASE_URL` 别名；`runtime_request_from_legacy`；`/outputs` 跳转和 compatibility alias。 |
-| 暂不实现 | 生产批次、工厂维度、BOM/半成品层级、口径草案与审批、异常闭环、PDF/Excel 导出和多 Agent。 |
+| 保留 | LangGraph Runtime/Harness；能力、主体与数据范围校验；Provider/Tool Registry；Worker、租约与 checkpoint；SSE；幂等、取消和 finalizing；Artifact；Trace/Replay/Eval；导入发布机制。 |
+| 整体替换 | 产品期间聚合替换为批次 DAG 卷积；成本 API 替换为完工批次列表与追溯详情；Agent/Artifact 报告替换为 schema `2.0`；前端成本页替换为六类、料工费、变动/固定三视图。 |
+| 不迁移 | 旧成本事实与三份样例；旧成本 `/products` 路由；旧五类成本字段；旧报告的比较、工序拆分、构成图和日期范围；旧迁移源历史数据。 |
+| 当前不实现 | 计划 BOM、库存结存、返工分支、副产品、异常工单、审批、PDF/Excel 导出和多 Agent。 |
 
-## 阶段状态（截至 2026-09-09）
+## 本轮阶段状态（2026-09-09）
 
-| 阶段 | 本次目标 | 状态 | 已有证据与未决项 |
+| 阶段 | 目标 | 状态 | 完成条件 |
 | --- | --- | --- | --- |
-| 1. 仓库与设计基线 | `frontend/backend/data/docs/scripts` 模块化目录；固定 IBM 包；许可与 provenance；项目设计绑定 | 已验收 | `design-systems/ibm/` 共 41 个文件逐文件 SHA-256 一致；`LICENSE`、`UPSTREAM.md`、`UPSTREAM-SHA256.txt` 和根 `DESIGN.md` 存在；前端只导入上游 `tokens.css`。 |
-| 2. 干净后端 | PostgreSQL-only Worker；单一 Alembic baseline；四个 schema；两项能力；无迁移源历史 | 实现完成，真实 PostgreSQL durable 验证待环境 | baseline 为 `20260907_0001`，无 `turn_requests`；样例导入 3 个产品/3326 条事实/0 错误；`/api/readyz` 已返回数据库、迁移和 Worker 正常。测试中的 3 个 durable 用例因未配置 `TEST_COST_DATABASE_URL` 明确 skip，不能计为通过。 |
-| 3. 真实产品闭环 | 三条成本只读 API；真实会话、澄清、Run、SSE、取消、状态栏、Inspector、Artifact；删除业务 mock 和演示开关 | 实现完成，本地验证通过；本轮未执行专门的 live DeepSeek 验证 | 产品 A `P001`、`2026-06` 固定值已由 API、Agent 计算和 Artifact 检查；Vitest 12/12、生产构建和 bundle 门禁通过；桌面与移动端深链/历史导航已检查。当前未执行 live DeepSeek 请求，fixture/Eval 结果不替代该证据；数据库中已有历史 Artifact 的 DeepSeek trace 也不计入本轮专门验证。 |
-| 4. 文档与交付 | 原子文档、运行手册、同步映射和可复核证据 | 已验收 | `docs/README.md`、架构/数据/API/运行手册与本计划互相可达；`scripts/check_docs_sync.ps1`、Ruff、`git diff --check` 通过。 |
+| 1. 数据基线 | `parts/cost_events/cost_event_inputs/cost_records`、48 项费用代码、唯一 baseline、四份样例 | 已实现；本地 fixture 验收通过 | 导入约束、样例批次和图边界测试通过；真实 PostgreSQL 迁移尚未执行 |
+| 2. 确定性卷积 | DAG、多投入、部分领用、不良成本承接、叶级尾差、三视图 | 已实现；本地验收通过 | 黄金批次、恒等式、环路、超量领用、舍入尾差和租户/快照边界测试通过 |
+| 3. API 与 Agent | `/overview`、`/finished-batches`、详情追溯图、Report/Artifact `2.0` | 已实现；本地验收通过 | API、Agent、lineage、Artifact 测试通过；真实 DeepSeek 未执行 |
+| 4. 前端 | 三页签、批次详情、追溯树、来源记录、Dashboard 和报表中心 | 已实现；自动化验收通过 | Vitest、生产构建和 bundle 门禁通过；桌面/移动/明暗截图检查未执行 |
+| 5. 文档与运行 | 原子文档、格式约定、运行手册和同步检查 | 已实现；本地验收通过 | 文档同步检查与 `git diff --check` 通过 |
 
-“已验收”只表示列出的检查确实执行并通过；标为“待环境”或“待执行”的项目不计入通过率。
+在对应命令实际执行前不得把“实现中，待验收”改成“已验收”。旧产品期间模型的 `P001/2026-06/13.90` 结果及其测试数量仅是被替换版本的历史证据，不再证明当前实现。
 
-## 接口与数据范围
+## 新 canonical 边界
 
-首版成本事实只通过以下 canonical 接口读取，聚合、比较、金额计算和权限过滤均在服务端完成：
+- 导入文件：`parts.json`、`cost_events.json`、`cost_event_inputs.json`、`cost_records.json`。
+- 成本 API：`GET /api/cost-data/overview`、`GET /api/cost-data/finished-batches`、`GET /api/cost-data/finished-batches/{finished_batch_id}`。
+- 公共类型：`CostOverview`、`FinishedBatchCostList`、`FinishedBatchCostDetail`、`CostTraceGraph`、`CostReportV2`。
+- Agent 输入边界：唯一产成品零件与期间；报告汇总该期间的全部最终批次。
+- 数据隔离：运行数据按 `tenant_id + principal_id`，成本事实按 `tenant_id + published batch + data_scope`。
 
-- `GET /api/cost-data/overview?period=YYYY-MM`
-- `GET /api/cost-data/products?period=&query=&sort=&page=&page_size=`
-- `GET /api/cost-data/products/{product_id}?period=YYYY-MM`
+## 本轮验收清单
 
-契约为 `CostOverview`、`ProductPeriodSummary` 和 `ProductPeriodDetail`；金额使用 Decimal。详情链路固定为“产品 → 工序 → 成本项 → 来源摘要”，不伪造批次或 BOM 节点。运行数据按 `tenant_id + principal_id` 隔离，成本事实必须来自当前已发布快照。
+完成实现后，将实际命令、通过数、skip 和环境限制补到本节；一种测试不能替代另一种。
 
-## 验收证据
-
-### 已执行
-
-| 检查 | 结果 |
+| 检查 | 当前证据 |
 | --- | --- |
-| `PYTHONPATH=backend backend/.venv/Scripts/python.exe -m pytest backend/tests -q` | `75 passed, 3 skipped`；skip 仅为未配置 `TEST_COST_DATABASE_URL` 的真实 PostgreSQL durable 用例。 |
-| `scripts/check_python_quality.ps1` | Ruff 检查与格式化通过，`89 files already formatted`。 |
-| `backend/scripts/verify_agent.py` | 离线 Agent 验证 `5/5`。 |
-| `backend/scripts/evaluate_agent.py` | 离线 Eval 通过；使用显式 `FixtureModelProvider`，不访问真实模型。 |
-| `frontend` 的 `npm test` | 8 个测试文件、12 个测试通过。 |
-| `frontend` 的生产构建与 `npm run test:bundle` | 通过；初始 JavaScript 约 `192 KiB`，小于 `500 KB` 门禁。 |
-| `scripts/check_docs_sync.ps1` 与 `git diff --check` | 通过。 |
-| `Push-Location backend; .\\.venv\\Scripts\\python.exe -m alembic current; Pop-Location` | `20260907_0001 (head)`。 |
-| 运行态 | Backend、Worker、Frontend 均 UP；`/api/health` 为 200 且 `runtime_ready=true`；`/api/readyz` 为 200。 |
-| 浏览器检查 | 桌面总览、ECharts、成本列表、产品详情、深链、前进/后退，以及 `390x844` 移动视口已检查；未发现布局重叠或 token 偏移。 |
+| 后端完整 Pytest | `82 passed, 3 skipped, 2 warnings` |
+| 真实 PostgreSQL 导入、隔离与 Runtime 集成 | 未执行：当前环境未设置 `COST_DATABASE_URL`/`TEST_COST_DATABASE_URL`，且未发现可用 PostgreSQL 服务 |
+| 黄金批次 API 与三视图恒等式 | 已通过；制造成本 `50000.00`、制造单位成本1 `50.00`、合计单位成本2 `53.50`，三视图恒等式通过 |
+| `verify_agent.py` 与离线 Eval | `verify_agent.py` 通过；离线 Eval `5/5` 通过；fixture 不证明真实模型可用 |
+| 真实 DeepSeek | 本轮未执行；必须单独记录 provider、model、时间和结果 |
+| 前端 Vitest、生产构建与 bundle 门禁 | Vitest `18 passed`；生产构建通过；bundle 初始 JavaScript `191.9 KiB`，低于 `500 KiB` 门禁 |
+| 桌面/移动、浅/深主题视觉检查 | 未执行 |
+| 文档同步与 `git diff --check` | 均通过 |
 
-### 尚未执行或受环境限制
+黄金批次的固定输入与结果见[成本核算格式](../data/cost-accounting-format.md)：完工 `1000.0000`、合格 `950.0000`、不良 `50.0000`；制造成本 `50000.00`、制造单位成本1 `50.00`、合计成本2 `53500.00`、合计单位成本2 `53.50`。成本详情、Agent report schema `2.0` 和 Artifact 必须一致。
 
-- 本轮未执行专门的真实 DeepSeek `/models` 或 `/chat/completions` 验证命令；不把离线 fixture/Eval 结果当作 live 证据，数据库中已有历史 Artifact 的 DeepSeek trace 也不计入本轮专门验证。
-- 真实 PostgreSQL durable 测试需要显式配置 `TEST_COST_DATABASE_URL`。不得使用 `backend/.env` 中的运行配置替代该测试变量。
-- 完整身份认证/RLS、生产批次/BOM/异常/审批和导出功能不在本次首版范围。
+## 后续演进顺序
 
-### 固定业务值
+1. 先完成并稳定本轮批次卷积闭环及验收。
+2. 有真实库存需求后独立设计库存结存与批次余额，不复用展示层派生值作为库存事实。
+3. 有真实生产规则后分别增加返工、副产品、异常和审批，不预建占位抽象。
 
-样例导入源为 `data/samples/products.json`、`production_outputs.json` 和 `process_cost_entries.json`。产品 A 的 canonical ID 为 `P001`；期间 `2026-06` 的工序成本、总成本和单位成本必须分别为：
-
-`61200 / 29000 / 26400 / 22400`，总成本 `139000`，合格产量 `10000`，单位成本 `13.90`。
-
-缺少产品或期间时，Runtime 必须先返回澄清，不读取成本事实、不生成 Artifact；跨租户、跨主体和未发布数据不可见。生产 Provider 缺少或拒绝 DeepSeek 时，Run 必须失败且不回退到规则解析、成本事实读取或 Artifact 生成；离线回放只允许显式 fixture Provider。
-
-## 后续顺序
-
-1. 先新增生产批次 schema、导入、Repository、确定性计算与端到端验收。
-2. 在批次稳定后新增 BOM/半成品层级。
-3. 最后独立设计异常工单与审批流程。
-
-每个阶段直接定义新的 canonical 契约并删除被替代路径；没有真实需求和端到端验收前，不预建抽象、配置或占位 UI。
+每个阶段定义唯一 canonical 契约并直接删除被替代路径；未实现能力只记录在本计划，不进入事实文档或占位 UI。

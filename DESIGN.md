@@ -54,6 +54,11 @@ floating section card.
 - The UI displays only server-returned costs, status, permissions, artifacts,
   and lineage. It must not calculate authoritative money or invent alerts,
   approvals, export jobs, batches, BOM nodes, or generation states.
+- The cost workspace presents the v2 finished-batch table with frozen identity
+  columns, grouped six-category manufacturing-cost columns, and the three
+  server-provided views (料工费, 六类制造成本, 变动/固定) inside a horizontally
+  scrollable dense work surface. Trace trees and source-record details remain
+  auditable and use the same IBM-inspired surfaces and focus states.
 - Every data surface implements loading, empty, error, unavailable, and
   unauthorized states without shifting fixed toolbars, table columns, charts,
   or status regions.

@@ -16,10 +16,10 @@
 | Tool/Provider 注册、Schema、重试 | `architecture/tool-provider.md` |
 | Event、Trace、Replay、Eval、脱敏 | `architecture/event-trace-replay.md` |
 | Repository、数据库连接、存储生命周期 | `data/storage.md`、`architecture/data-flow.md` |
-| SQLAlchemy 模型、schema、迁移、索引 | `data/data-dictionary.md` |
-| 导入校验、发布、隔离、保留 | `data/governance.md` |
+| SQLAlchemy 模型、schema、迁移、索引 | `data/data-dictionary.md`、`data/cost-accounting-format.md`（成本事实格式和费用代码） |
+| 导入校验、发布、隔离、保留 | `data/governance.md`、`data/cost-accounting-format.md`（卷积、舍入和三视图规则） |
 | 会话、Run、SSE、Artifact、错误 | `api/agent-contract.md` |
-| 成本总览、列表、详情契约 | `api/cost-data-contract.md` |
+| 成本总览、完工批次列表、追溯详情契约 | `api/cost-data-contract.md` |
 | 启动、迁移、导入、检查命令 | `operations/runbook.md` |
 | token、主题、布局与组件视觉规则 | 根 `DESIGN.md` |
 | 文档规则、索引或 Agent 规则 | `docs/README.md`、本文件、根 `AGENTS.md` |
@@ -33,7 +33,7 @@
 
 ## 完成定义
 
-- 所有架构原子文档、两份 API 契约、三份数据文档、运行手册和设计入口存在且互相可达。
+- 所有架构原子文档、两份 API 契约、四份数据文档（含成本核算格式）、运行手册和设计入口存在且互相可达。
 - 每个新增或修改的接口、字段、配置、状态和业务规则都有唯一文档 owner 和对应测试。
 - 当前事实中没有已删除实体、运行模式、接口或迁移链；仓库只有一条 CostGraph baseline。
 - 上游设计包固定 commit、许可和 provenance 完整，产品覆盖不直接修改上游 token 源。

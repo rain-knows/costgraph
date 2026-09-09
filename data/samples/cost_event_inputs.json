@@ -1,0 +1,8 @@
+[
+  {"input_id":"I-RAW-FG1","event_id":"E-FG-001","source_event_id":"E-RAW-001","consumed_quantity":"1000","unit":"pcs","source_record_id":"SRC-I-RAW-FG1"},
+  {"input_id":"I-SEMI-FG1","event_id":"E-FG-001","source_event_id":"E-SEMI-001","consumed_quantity":"1000","unit":"pcs","source_record_id":"SRC-I-SEMI-FG1"},
+  {"input_id":"I-SEMI-FG2","event_id":"E-FG-002","source_event_id":"E-SEMI-001","consumed_quantity":"400","unit":"pcs","source_record_id":"SRC-I-SEMI-FG2"},
+  {"input_id":"I-SEMI-MID","event_id":"E-MID-001","source_event_id":"E-SEMI-001","consumed_quantity":"100","unit":"pcs","source_record_id":"SRC-I-SEMI-MID"},
+  {"input_id":"I-MID-FG3","event_id":"E-FG-003","source_event_id":"E-MID-001","consumed_quantity":"300","unit":"pcs","source_record_id":"SRC-I-MID-FG3"},
+  {"input_id":"I-SEMI-FG4","event_id":"E-FG-004","source_event_id":"E-SEMI-001","consumed_quantity":"0.0001","unit":"pcs","source_record_id":"SRC-I-SEMI-FG4"}
+]

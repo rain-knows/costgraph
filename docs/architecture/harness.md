@@ -26,13 +26,13 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 4. 参数不含 Runtime 保留字段。
 5. 输入满足 Draft 2020-12 JSON Schema。
 
-读取成本事实的工具声明 `published_cost_data`。Harness 提供调用前策略门，Repository 仍是租户、已发布快照和产品/期间范围的最终数据边界，两者不能互相替代。
+读取成本事实的工具声明 `published_cost_data`。Harness 提供调用前策略门，Repository 仍是租户、已发布快照和产成品零件/期间范围的最终数据边界，两者不能互相替代。
 
 ## 澄清与失败
 
-- 成本计算缺少唯一产品或 `period/date_range` 时，必须先返回澄清；不得读取成本输入、执行计算或创建 Artifact。
+- 成本计算缺少唯一产成品零件或 `period` 时，必须先返回澄清；不得读取成本输入、执行卷积或创建 Artifact。
 - 系统帮助请求不访问成本 Repository。
 - 未授权映射为稳定的 `tool_access_denied`；未知工具或输入/输出契约错误映射为 `tool_validation_error`。
-- 公开错误摘要不包含完整参数、SQL、路径、模型正文、密钥或成本来源记录 ID。
+- 公开错误摘要不包含完整参数、SQL、路径、模型正文、密钥或成本来源记录 ID。业务成本详情的 `CostTraceGraph.records` 只在授权的成本详情响应中返回，不能进入 Agent 公开事件或模型 Trace。
 
 依据：`backend/app/agent/harness.py`、`backend/app/agent/context.py`、`backend/app/agent/capabilities.py`、`backend/app/domain/authorization.py`。

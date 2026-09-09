@@ -4,7 +4,7 @@
 
 `ToolSpec` 是 Harness 的内部注册契约，包含工具 ID、描述、Draft 2020-12 输入/输出 Schema、只读/确定性/幂等属性、所需能力、数据范围、owner、风险、启用状态、timeout、retry policy、版本和 Schema 版本。
 
-注册时校验 Schema 本身；执行前校验输入，执行后校验输出。`execution_context` 只由 Runtime 注入。当前工具只读且幂等：成本事实查询工具要求 `published_cost_data`，确定性计算与报表工具不额外读取事实，但仍要求 `cost_calculation` 能力。
+注册时校验 Schema 本身；执行前校验输入，执行后校验输出。`execution_context` 只由 Runtime 注入。当前工具只读且幂等：成本事实查询工具要求 `published_cost_data`，按产成品零件和期间读取已发布的事件图；确定性卷积与 report schema `2.0` 构建工具不额外读取事实，但仍要求 `cost_calculation` 能力。
 
 Repository 的暂时性基础设施失败可重试；授权、未知工具、参数、Schema 与确定性业务校验不可重试。新增通用工具前先评估当前注册表、LangGraph 和已安装库，不增加第二套工具协议。
 
@@ -22,6 +22,6 @@ Replay 可以在其自身的固定 Fixture 中为未声明的模型响应构造�
 
 Runtime 记录 provider、model、adapter version、usage、duration、timeout、结果形状和稳定错误分类，不记录 Prompt、模型正文、reasoning content 或密钥。Provider 429、5xx 和传输错误可重试；认证、请求、未知操作和结构化结果错误不可重试。
 
-模型可以提出路由和槽位并生成解释，但最终路由、能力、权限、范围、金额和报表字段仍由服务端决定。
+模型可以提出路由和槽位并生成解释，但最终路由、能力、权限、范围、批次图、48 项费用归类、金额和报表字段仍由服务端决定。模型不得创建投入边、修改领用比例或生成权威成本值。
 
 依据：`backend/app/agent/runtime_contracts.py`、`backend/app/agent/harness.py`、`backend/app/agent/providers.py`、`backend/app/agent/tools.py`、`backend/app/agent/runtime_services.py`。

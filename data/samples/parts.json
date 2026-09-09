@@ -1,0 +1,7 @@
+[
+  {"part_id":"P-RAW-001","part_number":"RM-001","part_description":"ABS树脂原料","part_type":"raw_material","product_family":"家电外壳","unit":"pcs","source_record_id":"SRC-P-RAW-001"},
+  {"part_id":"P-SEMI-001","part_number":"SF-001","part_description":"外购喷涂半成品","part_type":"purchased_semi_finished","product_family":"家电外壳","unit":"pcs","source_record_id":"SRC-P-SEMI-001"},
+  {"part_id":"P-FG-001","part_number":"FG-001","part_description":"冰箱门外壳","part_type":"finished_good","product_family":"家电外壳","unit":"pcs","source_record_id":"SRC-P-FG-001"},
+  {"part_id":"P-FG-002","part_number":"FG-002","part_description":"洗衣机面板","part_type":"finished_good","product_family":"家电面板","unit":"pcs","source_record_id":"SRC-P-FG-002"},
+  {"part_id":"P-FG-003","part_number":"FG-003","part_description":"空调装饰件","part_type":"finished_good","product_family":"空调配件","unit":"pcs","source_record_id":"SRC-P-FG-003"}
+]

@@ -39,11 +39,36 @@ Run 状态只使用 `queued/running/finalizing/retry_wait/succeeded/failed/cance
 
 ## 澄清、结果与幂等
 
-成本计算必须解析到唯一产品和 `period` 或 `date_range`。条件不完整时只返回 `needs_clarification`，不得读取成本事实、编造金额或生成 Artifact；后续回答通过 `reply_to_clarification_id` 关联。
+成本计算必须解析到唯一 `finished_good` 零件和 `period`。条件不完整或匹配多个零件时只返回 `needs_clarification`，不得读取成本事实、编造金额或生成 Artifact；后续回答通过 `reply_to_clarification_id` 关联。
 
-业务结果包括 `final_message`、可空结构化 `report_json`、事件摘要、状态栏、`outcome`、可空澄清和已使用上下文。`outcome` 为 `completed/needs_clarification/blocked/failed`。报告金额经 Pydantic 校验并由 Decimal 计算：金额与单位成本 2 位、数量 2 位，舍入为 `ROUND_HALF_UP`。
+业务结果包括 `final_message`、可空结构化 `report_json`、事件摘要、状态栏、`outcome`、可空澄清和已使用上下文。`outcome` 为 `completed/needs_clarification/blocked/failed`。报告金额经 Pydantic 校验并由 Decimal 计算：金额与单位成本 2 位、数量和工时 4 位、合格率与占比 2 位百分数，舍入为 `ROUND_HALF_UP`。
 
 `message_id` 在租户内绑定会话、owner 和规范化请求快照；相同请求复用同一 Run，不同请求返回 `409 message_id_conflict`。同一会话同时只能有一个活跃 Run。
+
+## CostReportV2
+
+成功的成本计算直接输出 report schema `2.0`，不提供旧报告字段或转换层。报告按指定产成品零件汇总期间内全部最终批次，结构固定为：
+
+| 字段 | 语义 |
+| --- | --- |
+| `report_schema_version` | 固定 `2.0` |
+| `rule_version/prompt_version/code_version` | 确定性规则、解释 Prompt 和代码版本 |
+| `data_snapshot_id/run_id` | 已发布输入快照 SHA-256 与本次 Run |
+| `part/period` | `PartIdentity` 与自然月 |
+| `batch_summary` | `batch_count/completed_quantity/qualified_quantity/defective_quantity/quality_rate` |
+| `summary_cards` | 至少三张由服务端生成的标签、值和单位 |
+| `manufacturing_view` | 六类制造成本、45 个制造叶项及合计 |
+| `material_labor_overhead_view` | 料、工、费及制造合计 |
+| `variable_fixed_view` | 变动/固定成本1、三项制造后费用及成本2 |
+| `finished_batches` | 期间内每个最终批次的身份与三视图，至少一项 |
+| `insight_cards/analysis_text` | 模型解释；不能覆盖结构化数字 |
+| `calculation_formula/calculation_policy` | 服务端公式说明和 Decimal/舍入策略 |
+| `source_summary/lineage` | 可读来源摘要及四张成本事实表的记录计数和 ID 样本 |
+| `model_info/ai_trace/agent_steps` | 脱敏模型、Trace 与执行步骤元数据 |
+
+`lineage.schema_version` 固定 `2.0`，`source` 固定 `postgresql_cost_data`，`tables` 必须恰好覆盖 `cost_data.parts`、`cost_data.cost_events`、`cost_data.cost_event_inputs` 和 `cost_data.cost_records`，并与报告的 `data_snapshot_id` 一致。`LineageTable.record_count` 与 `record_id_sample` 由服务端查询生成，不能由模型提供。
+
+报告不再包含 `comparison/process_cost_breakdown/cost_composition_chart/date_range`。三视图和 `finished_batches` 的值对象与[成本数据契约](cost-data-contract.md)一致；Report 和 Artifact 中 Decimal 也使用 JSON 字符串。
 
 ## Artifact
 
@@ -54,7 +79,7 @@ DELETE /api/artifacts/{artifact_id}
 POST   /api/artifacts/{artifact_id}/restore
 ```
 
-列表返回 owner 范围内摘要、总数和分页；详情才返回 `report_json`。`state` 默认 `active`。删除与恢复均幂等软操作；回收站不提供永久删除或导出。
+列表返回 owner 范围内摘要、总数和分页；摘要展示 `part_id/part_number/part_description/period`，详情才返回 `report_json`。`state` 默认 `active`。删除与恢复均幂等软操作；回收站不提供永久删除或导出。
 
 ## 错误与健康
 

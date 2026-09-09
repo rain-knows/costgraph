@@ -33,6 +33,10 @@ queued/running/retry_wait -> cancelled
 
 前端 reducer 以 Runtime 生命周期为唯一外层状态源，并按 SSE sequence 去重。节点状态只补充当前步骤、路由和进度；失败和取消保持终态，直到新提交或切换会话。
 
+成本核算路由的公开运行事件使用 v2 节点与工具标识：`resolve_part`、
+`load_finished_batches`、`calculate_finished_batch_cost` 和 `build_report`。
+Runtime 只记录这些调用的元数据与结果状态，不在生命周期层复制批次成本计算。
+
 ## 预算、超时和失败分类
 
 每个 `RuntimeServices` 实例只服务一次图执行，持有 `run_id`、attempt、调用序号、deadline 和可替换时钟。默认上限为模型调用 3 次、工具调用 12 次、单工具 15 秒、Run 180 秒；实际工具超时取工具声明、服务端上限与 Run 剩余时间的最小值。Provider token usage 记录进 Trace，不作为硬授权边界。
