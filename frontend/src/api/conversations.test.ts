@@ -21,11 +21,11 @@ describe('durable run stream', () => {
   })
 
   it('normalizes v2 semantic events', async () => {
-    const response = new Response(['id: 8', 'event: tool', `data: ${JSON.stringify({ schema_version: '2.0', sequence: 8, kind: 'tool', name: 'load_cost_inputs', status: 'success', summary: 'done' })}`, '', 'id: 9', 'event: result', `data: ${JSON.stringify({ schema_version: '2.0', result })}`, ''].join('\n'), { headers: { 'Content-Type': 'text/event-stream' } })
+    const response = new Response(['id: 8', 'event: tool', `data: ${JSON.stringify({ schema_version: '2.0', sequence: 8, kind: 'tool', name: 'load_finished_batches', status: 'success', summary: 'done' })}`, '', 'id: 9', 'event: result', `data: ${JSON.stringify({ schema_version: '2.0', result })}`, ''].join('\n'), { headers: { 'Content-Type': 'text/event-stream' } })
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
     const onMessage = vi.fn()
     await streamConversationRun('conv-1', 'run-1', onMessage)
-    expect(onMessage.mock.calls[0][0]).toEqual({ type: 'runtime_event', event: expect.objectContaining({ sequence: 8, kind: 'tool', name: 'load_cost_inputs' }) })
+    expect(onMessage.mock.calls[0][0]).toEqual({ type: 'runtime_event', event: expect.objectContaining({ sequence: 8, kind: 'tool', name: 'load_finished_batches' }) })
   })
 
   it('returns null when no active v2 run exists', async () => {

@@ -54,6 +54,18 @@ svg { flex: 0 0 auto; }
   .data-table tbody tr:hover { background: color-mix(in oklch, var(--surface) 78%, var(--bg)); }
   .data-table .sticky-col { @apply sticky left-0 z-[5]; background: var(--bg); box-shadow: 1px 0 0 var(--border-soft); }
   .data-table tr:hover .sticky-col { background: color-mix(in oklch, var(--surface) 78%, var(--bg)); }
+  .cost-table th { height: 40px; }
+  .cost-table th[rowspan='2'] { height: 80px; vertical-align: middle; }
+  .cost-table .cost-subhead th { top: 40px; z-index: 12; }
+  .cost-table .cost-group-head { background: var(--surface-warm); border-right: 1px solid var(--border); }
+  .cost-table .cost-sticky { @apply sticky; background: var(--bg); box-shadow: 1px 0 0 var(--border-soft); }
+  .cost-table thead .cost-sticky { z-index: 24; background: var(--surface); }
+  .cost-table tbody tr:hover .cost-sticky,
+  .cost-table tbody tr:focus-visible .cost-sticky { background: color-mix(in oklch, var(--surface) 78%, var(--bg)); }
+  .cost-table .cost-sticky-sequence { left: 0; min-width: 64px; width: 64px; }
+  .cost-table .cost-sticky-center { left: 64px; min-width: 104px; width: 104px; }
+  .cost-table .cost-sticky-center-name { left: 168px; min-width: 144px; width: 144px; }
+  .cost-table .cost-sticky-part { left: 312px; min-width: 128px; width: 128px; }
   .chart-box { @apply h-[280px] w-full; min-width: 0; }
   .icon-button { @apply inline-flex h-12 w-12 items-center justify-center border-0 bg-transparent p-0; color: var(--fg); transition: background var(--motion-fast) var(--ease-standard); }
   .icon-button:hover { background: var(--surface); }

@@ -1,4 +1,11 @@
-export type Money = number | string
+import type {
+  DecimalValue,
+  FinishedBatchCostSummary,
+  ManufacturingCostView,
+  MaterialLaborOverheadView,
+  VariableFixedCostView,
+} from './costData'
+
 export type CapabilityId = 'system_help' | 'cost_calculation'
 export type RouteId = CapabilityId | 'blocked'
 export type RoutingMode = 'auto' | 'manual'
@@ -20,46 +27,48 @@ export type AgentEvent = {
   finished_at?: string | null
 }
 
-export type ProcessCost = {
-  process_name: string
-  total_cost: Money
-  material_cost: Money
-  labor_cost: Money
-  equipment_cost: Money
-  energy_cost: Money
-  overhead_cost: Money
-}
-
 export type ReportJson = {
-  report_schema_version: string
+  report_schema_version: '2.0'
   rule_version: string
   prompt_version: string
   code_version: string
   data_snapshot_id: string
   run_id: string
-  product: { product_id: string; product_name: string; spec?: string | null }
+  part: {
+    part_id: string
+    part_number: string
+    part_description: string
+    part_type: 'raw_material' | 'purchased_semi_finished' | 'work_in_progress' | 'finished_good'
+    product_family: string | null
+  }
   period: string
   date_range?: { start_date: string; end_date: string } | null
-  summary_cards: Array<{ label: string; value: Money; unit: string }>
-  process_cost_breakdown: ProcessCost[]
-  cost_composition_chart: Array<{ name: string; value: Money }>
+  batch_summary: {
+    batch_count: number
+    completed_quantity: DecimalValue
+    qualified_quantity: DecimalValue
+    defective_quantity: DecimalValue
+    quality_rate: DecimalValue
+  }
+  summary_cards: Array<{ label: string; value: string | number; unit: string }>
+  manufacturing_view: ManufacturingCostView
+  material_labor_overhead_view: MaterialLaborOverheadView
+  variable_fixed_view: VariableFixedCostView
+  finished_batches: FinishedBatchCostSummary[]
   insight_cards?: Array<{ label: string; value: string; description: string }>
-  comparison?: {
-    previous_period: string
-    current_unit_cost: Money
-    previous_unit_cost: Money
-    unit_cost_delta: Money
-    unit_cost_delta_rate: Money
-  } | null
   calculation_formula: string[]
   calculation_policy: Record<string, string>
   analysis_text: string
   source_summary: string
   lineage: {
+    schema_version?: '2.0'
     source: string
+    query_scope?: Record<string, unknown>
     data_snapshot_id: string
     tables: Array<{ name: string; record_count: number; record_id_sample: string[] }>
   }
+  model_info: Record<string, unknown>
+  ai_trace: Record<string, unknown>
   agent_steps: AgentEvent[]
 }
 
@@ -91,7 +100,7 @@ export type AgentStatusBar = {
     effective_capabilities: CapabilityId[]
     data_scope: {
       source: string
-      allowed_product_ids: string[]
+      allowed_part_ids: string[]
       allowed_period_start?: string | null
       allowed_period_end?: string | null
     }

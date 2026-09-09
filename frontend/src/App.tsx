@@ -17,7 +17,7 @@ export default function App() {
     <Route element={<AppShell />}>
       <Route path="/" element={<DashboardPage />} />
       <Route path="/cost-data" element={<CostDataPage />} />
-      <Route path="/cost-data/:productId" element={<RecordDetailPage />} />
+      <Route path="/cost-data/:finishedBatchId" element={<RecordDetailPage />} />
       <Route path="/ai" element={<AiWorkspacePage />} />
       <Route path="/ai/:conversationId" element={<AiWorkspacePage />} />
       <Route path="/reports" element={<ReportsPage />} />

@@ -9,8 +9,9 @@ export type ArtifactSummary = {
   message_id: string
   run_id: string
   conversation_title: string
-  product_id: string
-  product_name: string
+  part_id: string
+  part_number: string
+  part_description: string
   period: string
   report_sha256: string
   data_snapshot_id: string

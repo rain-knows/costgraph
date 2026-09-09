@@ -76,7 +76,7 @@ describe('AiWorkspacePage historical runs', () => {
             run_id: 'run-1',
             outcome: 'completed',
             event_count: 1,
-            inherited_product: null,
+            inherited_part: null,
             has_report: false,
           },
           created_at: '2026-09-09T00:00:01Z',

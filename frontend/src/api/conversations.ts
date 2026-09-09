@@ -6,7 +6,7 @@ export type ConversationRunSummary = {
   outcome: AgentRunResponse['outcome']
   clarification?: AgentRunResponse['clarification'] | null
   event_count: number
-  inherited_product?: string | null
+  inherited_part?: string | null
   has_report: boolean
 }
 

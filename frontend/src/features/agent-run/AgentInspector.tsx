@@ -23,7 +23,7 @@ export function AgentInspector({ progress }: { progress: RuntimeProgressState })
           <p className="label">服务端授权</p>
           <p className="mt-3 flex gap-2"><ShieldCheck className="h-4 w-4 text-[var(--success)]" />仅开放系统帮助与成本计算</p>
           <p className="mt-2 flex gap-2"><Database className="h-4 w-4 text-[var(--accent)]" />{status?.authorization.data_scope.source ?? '等待范围校验'}</p>
-          {status?.authorization.data_scope.allowed_product_ids.length ? <p className="mt-2 break-words text-[var(--fg-2)]">产品范围：{status.authorization.data_scope.allowed_product_ids.join('、')}</p> : null}
+          {status?.authorization.data_scope.allowed_part_ids.length ? <p className="mt-2 break-words text-[var(--fg-2)]">零件范围：{status.authorization.data_scope.allowed_part_ids.join('、')}</p> : null}
         </section>
         <section className="border-t border-[var(--border)] pt-4">
           <div className="flex items-center justify-between"><p className="label">持久化事件</p><span className="num text-[var(--muted)]">{progress.events.length}</span></div>
