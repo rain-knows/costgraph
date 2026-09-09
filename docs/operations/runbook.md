@@ -62,6 +62,8 @@ Invoke-RestMethod http://127.0.0.1:8000/api/readyz
 .\dev.ps1 restart
 ```
 
+`dev.ps1` 兼容 Windows PowerShell 5.1 与 `pwsh`；启动期间会监测新进程，若 API、Worker 或 Vite 在健康检查完成前退出，会立即返回并附对应错误日志末尾。
+
 `livez` 只检查进程，`readyz` 检查数据库、Alembic head 和 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek。
 
 ## 黄金批次 API 检查

@@ -39,11 +39,7 @@ function Get-PortProcessId {
 
     $connection = $null
     try {
-        $connection = Get-NetTCPConnection `
-            -State Listen `
-            -LocalPort $Port `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+        $connection = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -First 1
     }
     catch {
         $connection = $null
@@ -96,7 +92,7 @@ function Wait-Url {
                     else {
                         ""
                     }
-                    throw "$ProcessLabel exited before $Url became ready.`n$errorTail"
+                    throw ($ProcessLabel + " exited before " + $Url + " became ready." + [Environment]::NewLine + $errorTail)
                 }
             }
             catch [System.InvalidOperationException] {
@@ -121,7 +117,7 @@ function Test-Python {
     }
 
     try {
-        & $PythonPath -c "import sys" *> $null
+        & $PythonPath -c "import sys" 2>&1 | Out-Null
         return $LASTEXITCODE -eq 0
     }
     catch {
@@ -208,8 +204,15 @@ function Ensure-BackendEnvironment {
     $installedHash = Read-Marker -Path $BackendMarker
     $importsReady = $false
     if (-not $created) {
-        & $VenvPython -c "import fastapi, uvicorn, langgraph, pydantic, pydantic_settings; import langgraph.checkpoint.postgres" *> $null
-        $importsReady = $LASTEXITCODE -eq 0
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            & $VenvPython -W ignore -c "import fastapi, uvicorn, langgraph, pydantic, pydantic_settings; import langgraph.checkpoint.postgres" *> $null
+            $importsReady = $LASTEXITCODE -eq 0
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
     }
 
     if ($created -or -not $importsReady -or $installedHash -ne $requirementsHash) {
@@ -236,7 +239,7 @@ function Ensure-FrontendEnvironment {
     if (Test-Path -LiteralPath $nodeModules) {
         Push-Location $FrontendDir
         try {
-            & $npmCommand.Source ls --depth=0 --silent *> $null
+            & $npmCommand.Source ls --depth=0 --silent 2>&1 | Out-Null
             $dependenciesReady = $LASTEXITCODE -eq 0
         }
         finally {
@@ -341,7 +344,7 @@ function Watch-Logs {
             }
         }
 
-        Write-Host "监听日志中，按 Ctrl+C 退出。" -ForegroundColor Green
+        Write-Host "Watching logs; press Ctrl+C to exit." -ForegroundColor Green
         while ($true) {
             foreach ($job in $jobs) {
                 Receive-Job -Job $job -ErrorAction SilentlyContinue | Write-Host
@@ -438,24 +441,12 @@ function Start-Services {
             Set-Content -LiteralPath $backendErr -Value "" -Encoding UTF8
 
             Write-Step "Starting backend..."
-            $backendProcess = Start-Process `
-                -FilePath $VenvPython `
-                -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000") `
-                -WorkingDirectory $BackendDir `
-                -WindowStyle Hidden `
-                -RedirectStandardOutput $backendOut `
-                -RedirectStandardError $backendErr `
-                -PassThru
+            $backendProcess = Start-Process -FilePath $VenvPython -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000") -WorkingDirectory $BackendDir -WindowStyle Hidden -RedirectStandardOutput $backendOut -RedirectStandardError $backendErr -PassThru
             $startedBackendPid = $backendProcess.Id
 
-            if (-not (Wait-Url `
-                    -Url $BackendUrl `
-                    -TimeoutSeconds 30 `
-                    -Process $backendProcess `
-                    -ProcessLabel "Backend" `
-                    -ErrorLogPath $backendErr)) {
+            if (-not (Wait-Url -Url $BackendUrl -TimeoutSeconds 30 -Process $backendProcess -ProcessLabel "Backend" -ErrorLogPath $backendErr)) {
                 $errorTail = Get-Content -LiteralPath $backendErr -Tail 20 -ErrorAction SilentlyContinue
-                throw ("Backend failed to start. Check {0}.`n{1}" -f $backendErr, $errorTail)
+                throw ("Backend failed to start. Check " + $backendErr + "." + [Environment]::NewLine + $errorTail)
             }
             $startedBackendPid = Get-PortProcessId -Port 8000
         }
@@ -471,14 +462,7 @@ function Start-Services {
             Set-Content -LiteralPath $workerOut -Value "" -Encoding UTF8
             Set-Content -LiteralPath $workerErr -Value "" -Encoding UTF8
             Write-Step "Starting PostgreSQL Agent worker..."
-            $workerProcess = Start-Process `
-                -FilePath $VenvPython `
-                -ArgumentList @("-m", "app.worker") `
-                -WorkingDirectory $BackendDir `
-                -WindowStyle Hidden `
-                -RedirectStandardOutput $workerOut `
-                -RedirectStandardError $workerErr `
-                -PassThru
+            $workerProcess = Start-Process -FilePath $VenvPython -ArgumentList @("-m", "app.worker") -WorkingDirectory $BackendDir -WindowStyle Hidden -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -PassThru
             $startedWorkerPid = $workerProcess.Id
         }
         else {
@@ -486,14 +470,9 @@ function Start-Services {
             Write-Step "Worker is already running."
         }
 
-        if (-not (Wait-Url `
-                -Url $ReadyUrl `
-                -TimeoutSeconds 30 `
-                -Process $workerProcess `
-                -ProcessLabel "Worker" `
-                -ErrorLogPath $workerErr)) {
+        if (-not (Wait-Url -Url $ReadyUrl -TimeoutSeconds 30 -Process $workerProcess -ProcessLabel "Worker" -ErrorLogPath $workerErr)) {
             $workerErrorTail = Get-Content -LiteralPath (Join-Path $LogDir "worker.err.log") -Tail 20 -ErrorAction SilentlyContinue
-            throw "Runtime did not become ready. Check Worker and database connectivity.`n$workerErrorTail"
+            throw ("Runtime did not become ready. Check Worker and database connectivity." + [Environment]::NewLine + $workerErrorTail)
         }
 
         if (-not $frontendOk) {
@@ -504,24 +483,12 @@ function Start-Services {
             Set-Content -LiteralPath $frontendErr -Value "" -Encoding UTF8
 
             Write-Step "Starting frontend..."
-            $frontendProcess = Start-Process `
-                -FilePath $npmPath `
-                -ArgumentList @("run", "dev") `
-                -WorkingDirectory $FrontendDir `
-                -WindowStyle Hidden `
-                -RedirectStandardOutput $frontendOut `
-                -RedirectStandardError $frontendErr `
-                -PassThru
+            $frontendProcess = Start-Process -FilePath $npmPath -ArgumentList @("run", "dev") -WorkingDirectory $FrontendDir -WindowStyle Hidden -RedirectStandardOutput $frontendOut -RedirectStandardError $frontendErr -PassThru
             $startedFrontendPid = $frontendProcess.Id
 
-            if (-not (Wait-Url `
-                    -Url $FrontendUrl `
-                    -TimeoutSeconds 30 `
-                    -Process $frontendProcess `
-                    -ProcessLabel "Frontend" `
-                    -ErrorLogPath $frontendErr)) {
+            if (-not (Wait-Url -Url $FrontendUrl -TimeoutSeconds 30 -Process $frontendProcess -ProcessLabel "Frontend" -ErrorLogPath $frontendErr)) {
                 $errorTail = Get-Content -LiteralPath $frontendErr -Tail 20 -ErrorAction SilentlyContinue
-                throw ("Frontend failed to start. Check {0}.`n{1}" -f $frontendErr, $errorTail)
+                throw ("Frontend failed to start. Check " + $frontendErr + "." + [Environment]::NewLine + $errorTail)
             }
             $startedFrontendPid = Get-PortProcessId -Port 5173
         }
