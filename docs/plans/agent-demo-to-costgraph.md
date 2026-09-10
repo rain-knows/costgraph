@@ -37,7 +37,7 @@
 
 - 导入文件：`parts.json`、`cost_events.json`、`cost_event_inputs.json`、`cost_records.json`。
 - 成本 API：`GET /api/cost-data/overview`、`GET /api/cost-data/finished-batches`、`GET /api/cost-data/finished-batches/{finished_batch_id}`。
-- 公共类型：`CostOverview`、`FinishedBatchCostList`、`FinishedBatchCostDetail`、`CostTraceGraph`、`CostReportV2`。
+- 公共类型：`CostOverview`、`FinishedBatchCostList`、`FinishedBatchCostDetail`、`CostTraceGraph`、`CostReportV3`。
 - Agent 输入边界：唯一产成品零件与期间；报告汇总该期间的全部最终批次。
 - 数据隔离：运行数据按 `tenant_id + principal_id`，成本事实按 `tenant_id + published batch + data_scope`。
 

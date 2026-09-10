@@ -35,11 +35,11 @@ HTTP query -> server principal/tenant/data scope
 HTTP -> conversation context -> capability/data-scope gate
   -> finished part + period -> clarification gate
   -> published event graph -> Decimal convolution
-  -> report schema 2.0 + lineage + trace
+  -> presentation | period_comparison report schema 3.0 + lineage + trace
   -> atomic Run/Turn/Message/Audit/Artifact finalization
 ```
 
-缺少唯一产成品零件或期间时在读取成本输入前停止，不返回金额，也不创建 Artifact。合法完成的成本报告以租户+Run/message 幂等生成 Artifact；软删除 Artifact 不修改原报告、哈希或运行记录。传给模型的确定性 Decimal 事实保持原精度字符串表示，批次 `completion_time` 由报告 Pydantic 契约从内部 `datetime` 统一序列化为公开 JSON 时间字符串。
+缺少唯一产成品零件或期间时在读取成本输入前停止，不返回金额，也不创建 Artifact。展示型报告读取一个目标期间；周期对比型报告分别读取基准期与目标期，用同一聚合服务生成两期三视图，再由报告服务确定性计算差额与变化率。合法完成的成本报告以租户+Run/message 幂等生成 Artifact；软删除 Artifact 不修改原报告、哈希或运行记录。传给模型的确定性 Decimal 事实保持原精度字符串表示，批次 `completion_time` 由报告 Pydantic 契约从内部 `datetime` 统一序列化为公开 JSON 时间字符串。
 
 ## Durable 控制流
 

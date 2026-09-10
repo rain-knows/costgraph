@@ -24,8 +24,8 @@ Public Trace schema 为 `2.0`，供 Inspector 和报表展示；Audit Trace sche
 
 ## Replay 与 Eval
 
-Replay 注入固定 Fixture Provider 和 Tool Registry，重新执行同一 LangGraph，而不是读取已保存结果。它按顺序消费响应，并验证脱敏参数摘要、输入/输出 Schema、节点顺序、能力/策略快照、`outcome` 与稳定 `report_json`；额外调用、剩余响应、顺序或摘要不一致均失败。离线 Eval 使用 `backend/evaluation/fixture_model_provider.py` 显式注入同类 Provider；生产图没有隐式模型回退。
+Replay 注入固定 Fixture Provider 和 Tool Registry，重新执行同一 LangGraph，而不是读取已保存结果。它按顺序消费响应，并验证脱敏参数摘要、输入/输出 Schema、节点顺序、能力/策略快照、`outcome` 与稳定 `report_json`；额外调用、剩余响应、顺序或摘要不一致均失败。报表 Replay 同时记录并复现 `report_generation` 路由、`presentation/period_comparison` 样式与对比基期，周期对比的两期批次读取及确定性计算都必须出现在同一条执行轨迹中。离线 Eval 使用 `backend/evaluation/fixture_model_provider.py` 显式注入同类 Provider；生产图没有隐式模型回退。
 
-Replay 不访问真实模型或成本 Repository，重新生成的时间戳不参与稳定比较。离线 Eval 还必须验证事件结构、服务端能力交集、澄清先于事实读取、版本元数据和脱敏；多次 trial 只有全部通过才算 Case 通过。真实 DeepSeek 验证单独执行和记录，不能由 fixture 结果替代。
+Replay 不访问真实模型或成本 Repository，重新生成的时间戳不参与稳定比较。离线 Eval 还必须验证事件结构、服务端能力交集、澄清先于事实读取、版本元数据和脱敏；报表 Case 额外校验有效路由、报告样式与基准期间。多次 trial 只有全部通过才算 Case 通过。真实 DeepSeek 验证单独执行和记录，不能由 fixture 结果替代。
 
 依据：`backend/app/agent/runtime_services.py`、`backend/app/agent/trace.py`、`backend/app/agent/replay.py`、`backend/scripts/evaluate_agent.py`、`backend/app/repositories/run_repository.py`。

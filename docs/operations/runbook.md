@@ -84,7 +84,7 @@ $detail = Invoke-RestMethod "http://127.0.0.1:8000/api/cost-data/finished-batche
 $detail | ConvertTo-Json -Depth 20
 ```
 
-详情必须满足：六类金额 `20000/8000/2000/4000/3000/13000`，制造成本 `50000.00`，料工费单位成本 `20.00/12.00/18.00`，制造单位成本1 `50.00`，变动/固定成本1 `30.00/20.00`，三项制造后单位成本 `1.00/2.00/0.50`，以及变动成本2、固定成本2、合计单位成本2 `33.00/20.50/53.50`。详情、Agent report schema `2.0` 和 Artifact 必须一致。
+详情必须满足：六类金额 `20000/8000/2000/4000/3000/13000`，制造成本 `50000.00`，料工费单位成本 `20.00/12.00/18.00`，制造单位成本1 `50.00`，变动/固定成本1 `30.00/20.00`，三项制造后单位成本 `1.00/2.00/0.50`，以及变动成本2、固定成本2、合计单位成本2 `33.00/20.50/53.50`。详情、Agent report schema `3.0` 和 Artifact 必须一致。服务端能力白名单默认包含 `system_help,cost_calculation,report_generation`；若部署配置覆盖该值，必须同时开放 `cost_calculation` 与依赖它的 `report_generation` 才能生成报表。
 
 ## 验证矩阵
 
@@ -106,10 +106,10 @@ git diff --check
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
 - 成本测试覆盖多投入、部分领用、同批次分流、不良成本承接、全量领用尾差、三视图恒等式和黄金结果。
 - PostgreSQL 集成覆盖发布、数据范围、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。未配置 `TEST_COST_DATABASE_URL` 导致的 skip 必须单独报告。
-- 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `2.0` 和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
+- 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `3.0`、`presentation/period_comparison` 两种样式、`report_generation` 能力路由和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
 - 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态。
 - 生产构建必须通过 bundle 门禁，初始 JS 小于 500 KB；页面与 ECharts 保持路由级懒加载。
-- 浏览器验收覆盖成本页和批次详情的桌面/移动、浅/深主题，无表头错位、文字溢出、遮挡或横向滚动丢列。
+- 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。
 
 真实 DeepSeek 检查单独执行并记录时间、provider、model 和结果；它可能产生少量费用，不能成为默认测试副作用。
 

@@ -29,6 +29,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - Worker 只领取数据库中已固化可信 owner 快照的 Run，不从客户端重新解释主体。
 - `raw_payload`/JSONB 只做导入追溯，不直接参与金额计算。累计成本、单位成本、占比和三视图汇总均为查询时派生值，不落库。
 - Artifact 只保存业务关联 ID，不对 Runtime 表建跨 schema 外键；删除会话不会删除独立历史产出。
+- Artifact 的 `report_json` 直接保存并读取当前 `CostReportV3`；不在 Repository 中转换旧报告。展示型和周期对比型共用 `agent_output.artifacts`，目标期间继续写入索引列 `period`，基准期间保存在报告 JSON 的 `comparison.baseline_period`。
 - checkpoint `thread_id` 固定为 `run_id`，没有公共读取 API，并按终态保留规则清理。
 
 字段和约束见 [数据字典](data-dictionary.md)，字段格式、48 项费用代码与公式见[成本核算格式](cost-accounting-format.md)，导入发布规则见 [治理与质量](governance.md)。

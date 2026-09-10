@@ -7,7 +7,8 @@ CostGraph 是制造业成本分析应用。当前产品用 PostgreSQL 中已发�
 当前 Agent 能力只有：
 
 - `system_help`：说明系统能力，不读取成本事实。
-- `cost_calculation`：在产成品零件和期间完整后读取已发布事实并确定性卷积该期间内的最终批次。
+- `cost_calculation`：在产成品零件和期间完整后读取已发布事实并确定性卷积最终批次。
+- `report_generation`：识别明确报表意图，在 `cost_calculation` 数据能力之上生成展示型或周期对比型结构化产出。
 
 当前批次图表达真实发生的购置、工艺和领用关系，不是计划 BOM 或库存台账。库存结存、返工分支、副产品、异常工单、审批、PDF/Excel 导出和多 Agent 不在当前实现中。
 
@@ -52,7 +53,7 @@ load conversation context -> policy gate -> select route
   -> build report -> final answer -> atomic artifact finalization
 ```
 
-缺少唯一产成品零件或 `period` 时，图在读取成本输入前返回 `needs_clarification`，且不创建 Artifact。期间按最终批次的 `completion_time` 归属；`system_help` 路由不会读取成本事实。报表分析 Provider 只接收零件、期间、确定性计算结果和状态栏，Decimal 事实按原精度序列化为字符串；报告模型接收成本批次的 `datetime` 并在公开 JSON 中输出时间字符串。
+缺少唯一产成品零件或 `period` 时，图在读取成本输入前返回 `needs_clarification`，且不创建 Artifact。期间按最终批次的 `completion_time` 归属；`system_help` 路由不会读取成本事实。明确报表词进入 `report_generation`，普通成本请求进入 `cost_calculation`；报表意图进一步解析为 `presentation` 或 `period_comparison`，对比型在同一权限和数据范围内分别读取两期事实。报表分析 Provider 只接收零件、期间、确定性计算结果和状态栏，Decimal 事实按原精度序列化为字符串；报告模型接收成本批次的 `datetime` 并在公开 JSON 中输出时间字符串。
 
 ## 核心不变量
 

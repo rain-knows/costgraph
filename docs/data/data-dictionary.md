@@ -114,7 +114,7 @@
 
 ## `agent_output.artifacts`
 
-`artifact_id` 为主键，`artifact_type` 固定 `cost_report`。owner 为 `tenant_id + principal_id`；关联字段为 conversation/turn/message/run ID；展示字段为会话标题、`part_id/part_number/part_description` 和期间；内容字段为 `report_json/report_sha256/data_snapshot_id`；版本字段为 report/rule/prompt/code version；`created_at/deleted_at` 管理软删除生命周期。租户+Run 和租户+消息唯一，并按 owner+生命周期+时间及 owner+零件+期间建索引。
+`artifact_id` 为主键，`artifact_type` 固定 `cost_report`。owner 为 `tenant_id + principal_id`；关联字段为 conversation/turn/message/run ID；展示字段为会话标题、`part_id/part_number/part_description` 和目标期间；内容字段为 `report_json/report_sha256/data_snapshot_id`，其中 `report_json` 只接受当前 `CostReportV3`，周期对比基准期保存在 `comparison.baseline_period`；版本字段为 report/rule/prompt/code version；`created_at/deleted_at` 管理软删除生命周期。租户+Run 和租户+消息唯一，并按 owner+生命周期+时间及 owner+零件+期间建索引。
 
 ## 关系
 

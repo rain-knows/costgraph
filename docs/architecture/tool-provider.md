@@ -4,7 +4,7 @@
 
 `ToolSpec` 是 Harness 的内部注册契约，包含工具 ID、描述、Draft 2020-12 输入/输出 Schema、只读/确定性/幂等属性、所需能力、数据范围、owner、风险、启用状态、timeout、retry policy、版本和 Schema 版本。
 
-注册时校验 Schema 本身；执行前校验输入，执行后校验输出。`execution_context` 只由 Runtime 注入。当前工具只读且幂等：成本事实查询工具要求 `published_cost_data`，按产成品零件和期间读取已发布的事件图；确定性卷积与 report schema `2.0` 构建工具不额外读取事实，但仍要求 `cost_calculation` 能力。
+注册时校验 Schema 本身；执行前校验输入，执行后校验输出。`execution_context` 只由 Runtime 注入。当前工具只读且幂等：成本事实查询工具要求 `published_cost_data`，按产成品零件和期间读取已发布的事件图；周期对比会对基准期与目标期分别调用同一读取工具。确定性卷积与 report schema `3.0` 构建工具不额外读取事实，但仍要求 `cost_calculation` 能力。
 
 Repository 的暂时性基础设施失败可重试；授权、未知工具、参数、Schema 与确定性业务校验不可重试。新增通用工具前先评估当前注册表、LangGraph 和已安装库，不增加第二套工具协议。
 
@@ -18,7 +18,7 @@ Repository 的暂时性基础设施失败可重试；授权、未知工具、参
 
 每个操作都有输出 JSON Schema，Provider 返回值在进入业务 State 前验证。生产 Adapter 使用配置的 DeepSeek HTTP API；配置、认证、模型可用性或结构化输出失败时显式失败，错误沿 Runtime 传播为 `model_unavailable`，图进入 `failed`，不生成报告或 Artifact，不用 fixture、规则文本或另一模型静默替代。Fixture Provider 只通过显式依赖注入服务于测试、Replay 和离线 Eval；生产 `run_runtime`/`stream_runtime` 未注入时始终使用 DeepSeek Adapter。
 
-`generate_cost_analysis` 的输入固定为零件、期间、确定性计算结果和当前状态栏；日期范围已经在槽位阶段归一为目标期间，不作为额外 Provider 参数。确定性结果中的 Decimal 在发送模型前按原精度转为 JSON 字符串。Report 工具按成本数据契约接受批次 `datetime`，并由 Pydantic 在公开 JSON 中序列化为时间字符串。回归测试覆盖严格方法签名和 Decimal 序列化，防止图节点与生产 Adapter 的调用参数再次漂移。
+`parse_cost_question` 输出成本意图、零件、目标期间、对比基准期和 `report_style`；显式期间仍由服务端解析器覆盖模型建议。`generate_cost_analysis` 的输入固定为零件、期间、确定性计算结果和当前状态栏；周期对比时同一计算结果参数附带基准期三视图。确定性结果中的 Decimal 在发送模型前按原精度转为 JSON 字符串。Report 工具按成本数据契约接受批次 `datetime`，并由 Pydantic 在公开 JSON 中序列化为时间字符串。回归测试覆盖严格方法签名和 Decimal 序列化，防止图节点与生产 Adapter 的调用参数再次漂移。
 
 Replay 可以在其自身的固定 Fixture 中为未声明的模型响应构造确定性值，但该行为只属于 `app.agent.replay` 的离线回放边界，不会被生产节点或 Provider 调用。
 

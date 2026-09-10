@@ -2,7 +2,7 @@
 
 ## 能力与 owner
 
-当前能力只有 `system_help` 和 `cost_calculation`。服务端按 `requested ∩ role_permissions ∩ server_allowlist` 计算有效能力，客户端字段不是授权事实。所有会话、Run、事件和 Artifact 端点按 `tenant_id + principal_id` 过滤；无权访问的对象表现为 `404`。
+当前能力为 `system_help`、`cost_calculation` 和 `report_generation`。服务端按 `requested ∩ role_permissions ∩ server_allowlist` 计算有效能力；`report_generation` 依赖 `cost_calculation`，缺少底层成本数据能力时不会进入有效能力集。客户端字段不是授权事实。所有会话、Run、事件和 Artifact 端点按 `tenant_id + principal_id` 过滤；无权访问的对象表现为 `404`。
 
 ## 会话
 
@@ -39,22 +39,23 @@ Run 状态只使用 `queued/running/finalizing/retry_wait/succeeded/failed/cance
 
 ## 澄清、结果与幂等
 
-成本计算必须解析到唯一 `finished_good` 零件和 `period`。条件不完整或匹配多个零件时只返回 `needs_clarification`，不得读取成本事实、编造金额或生成 Artifact；后续回答通过 `reply_to_clarification_id` 关联。
+明确出现“报表/报告/展示型/周期对比”等产出词时进入 `report_generation` 路由；普通成本问题进入 `cost_calculation`。两条路由共用确定性成本链路，但 Trace 和状态栏保留实际路由。成本计算必须解析到唯一 `finished_good` 零件和 `period`。问题理解节点同时输出 `report_style`；服务端只接受 `presentation`（展示型）与 `period_comparison`（周期对比型）。周期对比显式提供两个自然月时，较早月份为基准期、较晚月份为目标期；只提供目标期时，环比或普通对比采用上一自然月，同比采用上年同月。条件不完整、两个期间相同或匹配多个零件时只返回 `needs_clarification`，不得读取成本事实、编造金额或生成 Artifact；后续回答通过 `reply_to_clarification_id` 关联。
 
 业务结果包括 `final_message`、可空结构化 `report_json`、事件摘要、状态栏、`outcome`、可空澄清和已使用上下文。`outcome` 为 `completed/needs_clarification/blocked/failed`。报告金额经 Pydantic 校验并由 Decimal 计算：金额与单位成本 2 位、数量和工时 4 位、合格率与占比 2 位百分数，舍入为 `ROUND_HALF_UP`。
 
 `message_id` 在租户内绑定会话、owner 和规范化请求快照；相同请求复用同一 Run，不同请求返回 `409 message_id_conflict`。同一会话同时只能有一个活跃 Run。
 
-## CostReportV2
+## CostReportV3
 
-成功的成本计算直接输出 report schema `2.0`，不提供旧报告字段或转换层。报告按指定产成品零件汇总期间内全部最终批次，结构固定为：
+成功的成本计算直接输出 report schema `3.0`，不提供旧报告字段或转换层。报告按指定产成品零件汇总目标期间内全部最终批次，结构固定为：
 
 | 字段 | 语义 |
 | --- | --- |
-| `report_schema_version` | 固定 `2.0` |
+| `report_schema_version/report_style` | 固定 `3.0`；样式为 `presentation` 或 `period_comparison` |
 | `rule_version/prompt_version/code_version` | 确定性规则、解释 Prompt 和代码版本 |
 | `data_snapshot_id/run_id` | 已发布输入快照 SHA-256 与本次 Run |
 | `part/period` | `PartIdentity` 与自然月 |
+| `comparison` | 展示型固定为 `null`；周期对比型包含基准期三视图、基准批次、四项核心指标和六类制造成本的基准值、目标值、差额及变化率 |
 | `batch_summary` | `batch_count/completed_quantity/qualified_quantity/defective_quantity/quality_rate` |
 | `summary_cards` | 至少三张由服务端生成的标签、值和单位 |
 | `manufacturing_view` | 六类制造成本、45 个制造叶项及合计 |
@@ -68,7 +69,7 @@ Run 状态只使用 `queued/running/finalizing/retry_wait/succeeded/failed/cance
 
 `lineage.schema_version` 固定 `2.0`，`source` 固定 `postgresql_cost_data`，`tables` 必须恰好覆盖 `cost_data.parts`、`cost_data.cost_events`、`cost_data.cost_event_inputs` 和 `cost_data.cost_records`，并与报告的 `data_snapshot_id` 一致。`LineageTable.record_count` 与 `record_id_sample` 由服务端查询生成，不能由模型提供。
 
-报告不再包含 `comparison/process_cost_breakdown/cost_composition_chart/date_range`。三视图和 `finished_batches` 的值对象与[成本数据契约](cost-data-contract.md)一致；Report 和 Artifact 中 Decimal 也使用 JSON 字符串。
+`comparison.delta = current_value - baseline_value`，`change_rate = delta / baseline_value * 100`；基准值为零时变化率为 `null`。这些值由服务端 Decimal 代码计算，模型与前端不重算。三视图和 `finished_batches` 的值对象与[成本数据契约](cost-data-contract.md)一致；Report 和 Artifact 中 Decimal 也使用 JSON 字符串。
 
 ## Artifact
 

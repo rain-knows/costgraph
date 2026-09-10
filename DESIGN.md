@@ -74,6 +74,14 @@ floating section card.
   states and respect `prefers-reduced-motion`.
 - Charts use the same server values and Decimal-derived display strings as
   tables and reports. Color is never the only carrier of meaning.
+- Report presentation is intent-specific. `presentation` leads with one-period
+  batch metrics and stacked material/labor/overhead composition;
+  `period_comparison` leads with labeled baseline/current KPIs, grouped
+  six-class unit-cost bars, signed deltas, percentage change, and an exact data
+  table. Comparison colors always pair with arrows, signs, labels, or patterns.
+- A report must not expose an arbitrary chart picker. Chart selection follows
+  the server-declared report style and measure semantics; every comparison
+  chart keeps the baseline and target periods visible in its title or legend.
 
 ## Responsive and accessibility baseline
 

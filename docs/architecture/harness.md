@@ -12,7 +12,7 @@ requested capabilities
   intersect server allowlist
 ```
 
-客户端能力列表只是请求，不能授予权限。当前注册能力仅为 `system_help` 和 `cost_calculation`；能力元数据声明版本、角色、数据范围、风险和必需槽位。
+客户端能力列表只是请求，不能授予权限。当前注册能力为 `system_help`、`cost_calculation` 和 `report_generation`；能力元数据声明版本、角色、数据范围、风险和必需槽位。`report_generation.report_styles` 公开 `presentation/period_comparison` 两种报表形式，并依赖 `cost_calculation` 提供底层成本事实访问；缺少依赖时该能力不会进入有效集合。
 
 ## 上下文与策略门
 
@@ -31,6 +31,7 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 ## 澄清与失败
 
 - 成本计算缺少唯一产成品零件或 `period` 时，必须先返回澄清；不得读取成本输入、执行卷积或创建 Artifact。
+- 周期对比使用两个不同自然月；只给目标月时，环比或普通对比确定性采用上一自然月，同比采用上年同月，两个期间相同时先澄清。两期数据分别通过相同工具 preflight 和 Repository 范围校验。
 - 系统帮助请求不访问成本 Repository。
 - 未授权映射为稳定的 `tool_access_denied`；未知工具或输入/输出契约错误映射为 `tool_validation_error`。
 - 公开错误摘要不包含完整参数、SQL、路径、模型正文、密钥或成本来源记录 ID。业务成本详情的 `CostTraceGraph.records` 只在授权的成本详情响应中返回，不能进入 Agent 公开事件或模型 Trace。
