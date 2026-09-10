@@ -17,7 +17,7 @@ COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
 
 ## 空库迁移与导入
 
-当前唯一 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换。已经运行旧 baseline 的开发数据库必须由操作者显式删除并重建专用数据库；`dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
+当前唯一 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换。已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。`dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
 
 ```powershell
 cd D:\work\costgraph
@@ -64,7 +64,9 @@ Invoke-RestMethod http://127.0.0.1:8000/api/readyz
 
 `dev.ps1` 兼容 Windows PowerShell 5.1 与 `pwsh`；启动期间会监测新进程，若 API、Worker 或 Vite 在健康检查完成前退出，会立即返回并附对应错误日志末尾。
 
-`livez` 只检查进程，`readyz` 检查数据库、Alembic head 和 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek。
+`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。历史开发 baseline 可能与当前 baseline 共用 `20260907_0001`，因此 `alembic current` 为 head 或重复执行 `upgrade head` 都不能证明旧库表结构已更新。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
+
+`livez` 只检查进程，`readyz` 检查数据库、Alembic head、必需表和列以及 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek，也不校验列类型、索引和约束或是否已发布成本快照。
 
 ## 黄金批次 API 检查
 

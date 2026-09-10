@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.engine import get_engine, get_session_factory
-from app.db.models import RuntimeAgentWorker
+from app.db.models import Base, RuntimeAgentWorker
 from app.repositories.run_repository import utc_now
 from app.settings import AppSettings, get_settings
 
 EXPECTED_ALEMBIC_HEAD = "20260907_0001"
+LOGGER = logging.getLogger(__name__)
 
 
 def health_snapshot(settings: AppSettings | None = None) -> dict[str, Any]:
@@ -36,6 +38,7 @@ def health_snapshot(settings: AppSettings | None = None) -> dict[str, Any]:
         "execution_backend": "postgres_worker",
         "durable_runs": True,
         "database": database,
+        "alembic": migration,
         "worker": worker,
         "runtime_api_versions": ["2.0"],
         "preferred_runtime_api": "2.0",
@@ -51,7 +54,7 @@ def readiness_snapshot(
     checks: dict[str, str] = {"database": snapshot["database"]}
     ready = snapshot["database"] != "unreachable"
     if snapshot["database"] == "reachable":
-        migration = _migration_status()
+        migration = snapshot["alembic"]
         checks["alembic"] = migration
         ready = ready and migration == "head"
     else:
@@ -96,6 +99,32 @@ def _migration_status() -> str:
                     text("SELECT version_num FROM alembic_version")
                 )
             }
-        return "head" if current == {EXPECTED_ALEMBIC_HEAD} else "behind"
+            if current != {EXPECTED_ALEMBIC_HEAD}:
+                return "behind"
+            # A revision stamp alone cannot detect an outdated development
+            # baseline. Reflect required tables/columns without reading data.
+            inspector = inspect(connection)
+            tables = list(Base.metadata.tables.values())
+            for schema in sorted({table.schema for table in tables}):
+                required = [table for table in tables if table.schema == schema]
+                columns = inspector.get_multi_columns(
+                    schema=schema, filter_names=[table.name for table in required]
+                )
+                for table in required:
+                    actual = {
+                        column["name"]
+                        for column in columns.get((schema, table.name), [])
+                    }
+                    missing = set(table.columns.keys()) - actual
+                    if missing:
+                        LOGGER.error(
+                            "Database schema mismatch: %s missing columns: %s. "
+                            "Initialize a fresh database with the current Alembic "
+                            "baseline; see docs/operations/runbook.md.",
+                            table.fullname,
+                            ", ".join(sorted(missing)),
+                        )
+                        return "schema_mismatch"
+        return "head"
     except (RuntimeError, SQLAlchemyError):
         return "unavailable"

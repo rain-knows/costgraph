@@ -96,6 +96,6 @@ GET /api/livez
 GET /api/readyz
 ```
 
-`livez` 只证明进程可响应；`readyz` 检查数据库、迁移和 Worker，不调用付费模型；`health` 汇总版本、执行模式和 `runtime_ready`。前端在 `runtime_ready=false` 时禁止创建 Run。
+`livez` 只证明进程可响应；`readyz` 检查数据库、迁移和 Worker，不调用付费模型；`health` 汇总版本、执行模式、`alembic` 和 `runtime_ready`。迁移检查同时校验当前模型必需的表和列：revision 相同但缺表或缺列时，`health.alembic` 与 `readyz.checks.alembic` 为 `schema_mismatch`，`runtime_ready=false`，`readyz` 返回 503。该检查不校验类型、索引或约束。前端在 `runtime_ready=false` 时禁止创建 Run。
 
 依据：`backend/app/api/conversations.py`、`backend/app/api/runtime_runs.py`、`backend/app/api/artifacts.py`、`backend/app/schemas/runtime.py`、`backend/app/schemas/agent.py`、`backend/app/schemas/artifact.py`。

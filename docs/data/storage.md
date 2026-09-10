@@ -20,7 +20,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - 连接池启用 pre-ping；pool size、overflow 和超时使用服务端配置的有界值。
 - Alembic revision `20260907_0001` 是唯一 CostGraph baseline，也是 schema 的唯一创建入口。API 和 Worker 启动时不自动创建业务表，也不调用 checkpoint saver 的 setup。
 - `dev.ps1` 只负责启动 API、独立 Worker 和 Vite，并等待 `/api/readyz`；它不执行 Alembic、创建表或清理数据库，启动阶段进程提前退出时会立即报告对应日志。
-- `/api/readyz` 校验数据库连通、数据库 revision 等于代码 head，以及 Worker 心跳。任一项失败时 Runtime 不接收新 Run。
+- `/api/readyz` 校验数据库连通、数据库 revision 等于代码 head、四个 schema 的必需表和列存在，以及 Worker 心跳。使用 SQLAlchemy Inspector 按 schema 批量反射列定义；缺表或缺列返回 `checks.alembic=schema_mismatch`，服务端日志记录缺失对象。此检查不比较列类型、索引和约束，也不代替 Alembic。任一项失败时 Runtime 不接收新 Run。
 
 ## 读取与所有权边界
 

@@ -309,6 +309,7 @@ function Show-Status {
     Write-Host "Backend : $backendText"
     Write-Host "Frontend: $frontendText"
     Write-Host "Worker  : $workerText"
+    Write-Host "Runtime : $(if (Test-Url -Url $ReadyUrl) { 'READY' } else { 'NOT READY - check /api/readyz and .\dev.ps1 logs' })"
 }
 
 function Watch-Logs {
@@ -472,7 +473,7 @@ function Start-Services {
 
         if (-not (Wait-Url -Url $ReadyUrl -TimeoutSeconds 30 -Process $workerProcess -ProcessLabel "Worker" -ErrorLogPath $workerErr)) {
             $workerErrorTail = Get-Content -LiteralPath (Join-Path $LogDir "worker.err.log") -Tail 20 -ErrorAction SilentlyContinue
-            throw ("Runtime did not become ready. Check Worker and database connectivity." + [Environment]::NewLine + $workerErrorTail)
+            throw ("Runtime did not become ready. Check /api/readyz and .\dev.ps1 logs for database schema, Alembic and Worker errors; see docs/operations/runbook.md." + [Environment]::NewLine + $workerErrorTail)
         }
 
         if (-not $frontendOk) {
