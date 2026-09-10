@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent.capabilities import CapabilityId, RoutingMode, validate_capability_ids
-from app.domain.report import CostReportV2
+from app.domain.report import CostReportV3
 
 
 class AgentEvent(BaseModel):
@@ -22,7 +22,7 @@ class AgentRunResponse(BaseModel):
     turn_id: str | None = None
     message_id: str | None = None
     final_message: str
-    report_json: CostReportV2 | None = None
+    report_json: CostReportV3 | None = None
     events: list[AgentEvent]
     status_bar: dict[str, Any] | None = None
     outcome: Literal["completed", "needs_clarification", "blocked", "failed"] = (

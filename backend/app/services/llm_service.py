@@ -15,7 +15,17 @@ from app.settings import get_settings
 # Explicit test override only. Environment-backed values are resolved from Settings at
 # call time so importing this module never freezes runtime configuration.
 DEEPSEEK_MODEL: str | None = None
-PROMPT_VERSION = "deepseek-cost-prompts-v2"
+PROMPT_VERSION = "deepseek-cost-prompts-v3"
+
+COMPARISON_REPORT_KEYWORDS = (
+    "对比",
+    "比较",
+    "环比",
+    "同比",
+    "差异",
+    "差额",
+    "变化",
+)
 
 
 def get_deepseek_model() -> str:
@@ -272,6 +282,48 @@ def extract_latest_period_from_question(question: str) -> str:
     return max(normalized_periods, default="")
 
 
+def extract_periods_from_question(question: str) -> list[str]:
+    """Return every explicit month in chronological order without duplicates."""
+    compact = question.replace(" ", "")
+    matches = re.findall(
+        r"(?<!\d)((?:20)?\d{2})\s*年\s*(1[0-2]|0?[1-9])\s*月",
+        question,
+    )
+    matches.extend(
+        re.findall(
+            r"(?<!\d)((?:20)?\d{2})\s*[-/]\s*(1[0-2]|0[1-9])(?![-/]\d)",
+            question,
+        )
+    )
+    matches.extend(
+        re.findall(
+            r"(?:[A-Za-z0-9]+-)+\d{3}((?:20)?\d{2})年(1[0-2]|0?[1-9])月",
+            compact,
+        )
+    )
+    periods = [f"{_normalize_year(year)}-{int(month):02d}" for year, month in matches]
+    year_month = re.search(
+        r"(?<!\d)((?:20)?\d{2})\s*年\s*(1[0-2]|0?[1-9])\s*月",
+        question,
+    )
+    if year_month:
+        year = _normalize_year(year_month.group(1))
+        periods.extend(
+            f"{year}-{int(month):02d}"
+            for month in re.findall(r"[和与、到至](1[0-2]|0?[1-9])月", compact)
+        )
+    return sorted(set(periods))
+
+
+def infer_report_style(question: str) -> str:
+    compact = question.replace(" ", "")
+    return (
+        "period_comparison"
+        if any(keyword in compact for keyword in COMPARISON_REPORT_KEYWORDS)
+        else "presentation"
+    )
+
+
 def extract_date_range_from_question(question: str) -> dict[str, str] | None:
     compact_query = question.replace(" ", "")
     dated_mentions: list[tuple[int, str]] = []
@@ -449,9 +501,11 @@ def parse_cost_question_with_llm(
             "role": "system",
             "content": (
                 "你是制造业成本 Agent 的问题理解节点。只输出 JSON，不要输出解释。"
-                "字段必须包含 intent、part_text、period、start_date、end_date。"
+                "字段必须包含 intent、report_style、part_text、period、comparison_period、start_date、end_date。"
                 "intent 只能是 cost_query、cost_breakdown、variance_analysis、unknown。"
+                "report_style 只能是 presentation 或 period_comparison；涉及对比、环比、同比、差异时选 period_comparison。"
                 "period 使用 YYYY-MM；如果用户提到多个期间，period 使用较晚的目标期间。"
+                "comparison_period 是对比基准期，未提及则用空字符串。"
                 "如果用户给出具体日期范围，start_date 和 end_date 使用 YYYY-MM-DD；"
                 "不能识别则用空字符串。"
                 "part_text 保留用户提到的零件号或零件名称，例如 FG-001。不要生成成本金额。"
@@ -497,15 +551,24 @@ def parse_cost_question_with_llm(
             "DeepSeek 返回内容不符合意图槽位契约。", trace
         ) from exc
     normalized_period = extract_latest_period_from_question(question)
+    explicit_periods = extract_periods_from_question(question)
     date_range = extract_date_range_from_question(question)
+    report_style = infer_report_style(question)
+    comparison_period = (
+        explicit_periods[-2]
+        if report_style == "period_comparison" and len(explicit_periods) >= 2
+        else slots.comparison_period
+    )
     return {
         "intent": slots.intent,
+        "report_style": report_style,
         "part_text": slots.part_text,
         "period": (
             date_range["end_date"][:7]
             if date_range
             else normalized_period or slots.period
         ),
+        "comparison_period": comparison_period,
         # Date ranges are accepted only when they are explicitly present in the
         # user query. This keeps a model from turning "May and June" into a
         # daily range and preserves the deterministic date-range boundary.
@@ -535,7 +598,8 @@ def classify_route_with_llm(
                 "你是制造业成本 Agent 的路由分类节点。只输出 JSON，不要输出解释。"
                 "route 只能从 candidate_routes 中选择；如果无法确定，选择 system_help。"
                 "字段必须包含 route、confidence、reason。"
-                "cost_calculation 只用于产品成本、单位成本、成本构成、成本核算、工序成本或成本报表问题；"
+                "report_generation 用于用户明确要求报表、报告、展示型或周期对比型产出；"
+                "cost_calculation 用于产品成本、单位成本、成本构成、成本核算或工序成本问题；"
                 "system_help 用于系统能力、流程、使用方式和一般说明。"
             ),
         },
@@ -611,6 +675,17 @@ def generate_cost_analysis_with_llm(
         ],
         "variable_fixed_view": calculation_result["variable_fixed_view"],
     }
+    if calculation_result.get("comparison"):
+        facts["comparison_period"] = calculation_result.get("comparison_period")
+        facts["comparison"] = {
+            "batch_summary": calculation_result["comparison"]["batch_summary"],
+            "manufacturing_view": calculation_result["comparison"][
+                "manufacturing_view"
+            ],
+            "variable_fixed_view": calculation_result["comparison"][
+                "variable_fixed_view"
+            ],
+        }
     messages: list[dict[str, str]] = [
         {
             "role": "system",
@@ -618,6 +693,7 @@ def generate_cost_analysis_with_llm(
                 "你是制造业成本分析助手。只能基于用户提供的 JSON 事实写一段中文分析。"
                 "不要新增任何金额、数量、批次、期间或零件。不要说数据来自真实 ERP。"
                 "围绕合计单位成本2、料工费构成、变动/固定成本和质量数据说明。"
+                "如果输入包含 comparison，明确写出基准期与目标期，并只做输入事实支持的对比。"
                 "所有金额和比例必须逐字引用输入 JSON，禁止自行计算。"
                 "长度控制在 100 字以内。"
             ),

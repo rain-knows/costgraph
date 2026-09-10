@@ -420,7 +420,7 @@ def default_tool_registry() -> ToolRegistry:
                 deterministic=True,
                 read_only=True,
                 retry_policy="transient",
-                version="cost-tools-v2",
+                version="cost-tools-v3",
             ),
             function,
         )
@@ -435,7 +435,7 @@ def default_tool_registry() -> ToolRegistry:
             deterministic=True,
             read_only=True,
             retry_policy="transient",
-            version="cost-tools-v2",
+            version="cost-tools-v3",
         ),
         tools.build_report_tool,
     )

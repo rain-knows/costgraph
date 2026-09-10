@@ -9,6 +9,8 @@ from typing import Any
 from app.services.llm_service import (
     extract_date_range_from_question,
     extract_latest_period_from_question,
+    extract_periods_from_question,
+    infer_report_style,
 )
 
 
@@ -37,6 +39,8 @@ class FixtureModelProvider:
             raise TypeError(f"Fixture 模型响应必须是对象：{operation}")
         if operation == "parse_cost_question":
             value.setdefault("model", self.model_id)
+            value.setdefault("report_style", "presentation")
+            value.setdefault("comparison_period", "")
         if operation == "classify_route":
             value.setdefault("reason", "fixture")
         value.setdefault(
@@ -56,9 +60,13 @@ class FixtureModelProvider:
         self, question: str, candidate_routes: list[str] | None = None, *_args: Any
     ) -> dict[str, Any]:
         route = (
-            "cost_calculation"
-            if any(word in question for word in ("成本", "核算", "产品"))
-            else "system_help"
+            "report_generation"
+            if any(word in question for word in ("报表", "报告", "展示型", "周期对比"))
+            else (
+                "cost_calculation"
+                if any(word in question for word in ("成本", "核算", "产品"))
+                else "system_help"
+            )
         )
         if candidate_routes and route not in candidate_routes:
             route = candidate_routes[0]
@@ -84,6 +92,8 @@ class FixtureModelProvider:
             part_text = "FG-001"
         date_range = extract_date_range_from_question(question)
         period = extract_latest_period_from_question(question)
+        periods = extract_periods_from_question(question)
+        report_style = infer_report_style(question)
         if date_range:
             period = date_range["end_date"][:7]
         if any(
@@ -98,8 +108,14 @@ class FixtureModelProvider:
             "parse_cost_question",
             {
                 "intent": intent,
+                "report_style": report_style,
                 "part_text": part_text,
                 "period": period,
+                "comparison_period": (
+                    periods[-2]
+                    if report_style == "period_comparison" and len(periods) >= 2
+                    else ""
+                ),
                 "date_range": date_range,
                 "model": self.model_id,
             },

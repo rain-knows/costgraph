@@ -33,12 +33,16 @@ class CostAgentState(TypedDict, total=False):
     outcome: RunOutcome
     readonly_answer: str
     intent: Literal["cost_query", "cost_breakdown", "variance_analysis", "unknown"]
+    report_style: Literal["presentation", "period_comparison"]
+    explicit_report_style: bool
     part_text: str
     part: dict[str, Any]
     period: str
+    comparison_period: str
     date_range: dict[str, str]
     explicit_part: bool
     explicit_period: bool
+    explicit_comparison_period: bool
     explicit_date_range: bool
     resolved_slots: dict[str, Any]
     missing_slots: list[str]
@@ -48,6 +52,7 @@ class CostAgentState(TypedDict, total=False):
     context_used: ContextUsed
     recent_messages: list[dict[str, Any]]
     batch_sources: list[dict[str, Any]]
+    comparison_batch_sources: list[dict[str, Any]]
     calculation_result: dict[str, Any]
     previous_calculation_result: dict[str, Any]
     comparison_result: dict[str, Any]

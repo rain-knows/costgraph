@@ -19,7 +19,9 @@ if __name__ == "__main__":
     print(f"model={get_deepseek_model()}")
     print(f"parsed={parsed}")
 
-    context = build_execution_context("auto", ["system_help", "cost_calculation"])
+    context = build_execution_context(
+        "auto", ["system_help", "cost_calculation", "report_generation"]
+    )
     source = CostFixtureRepository().load_finished_batch_source("FG-A-2026-06", context)
     if source is None:
         raise RuntimeError("找不到黄金产成品批次 FG-A-2026-06")

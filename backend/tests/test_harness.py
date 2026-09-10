@@ -60,3 +60,16 @@ def test_capability_registry_declares_governance_metadata() -> None:
     assert cost.data_scope == "published_cost_data"
     assert cost.risk_level == "low"
     assert cost.enabled is True
+    reporting = CAPABILITY_REGISTRY["report_generation"]
+    assert reporting.report_styles == ("presentation", "period_comparison")
+    assert reporting.required_roles == ("cost_analyst", "agent_admin")
+
+
+def test_report_generation_requires_cost_calculation_dependency() -> None:
+    prepared = AgentHarness().prepare(
+        RuntimeRunRequest(
+            question="生成报表",
+            requested_capabilities=["report_generation"],
+        )
+    )
+    assert prepared.execution_context.effective_capabilities == ()

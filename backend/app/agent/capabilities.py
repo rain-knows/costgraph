@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, cast
 
-CapabilityId = Literal["system_help", "cost_calculation"]
-RouteId = Literal["system_help", "cost_calculation", "blocked"]
+CapabilityId = Literal["system_help", "cost_calculation", "report_generation"]
+RouteId = Literal["system_help", "cost_calculation", "report_generation", "blocked"]
 RoutingMode = Literal["auto", "manual"]
 
 
@@ -12,13 +12,14 @@ RoutingMode = Literal["auto", "manual"]
 class CapabilitySpec:
     id: CapabilityId
     label: str
-    route: Literal["system_help", "cost_calculation"]
+    route: Literal["system_help", "cost_calculation", "report_generation"]
     read_only: bool
     deterministic: bool
     mode: str
     required_slots: tuple[str, ...]
     status_plan: str
     status_nodes: tuple[str, ...]
+    report_styles: tuple[str, ...] = ()
     required_roles: tuple[str, ...] = ()
     data_scope: str = "none"
     risk_level: str = "low"
@@ -68,6 +69,33 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
             "build_report_json",
             "final_answer",
         ),
+        required_roles=("cost_analyst", "agent_admin"),
+        data_scope="published_cost_data",
+        risk_level="low",
+    ),
+    CapabilitySpec(
+        id="report_generation",
+        label="报表生成",
+        route="report_generation",
+        read_only=True,
+        deterministic=True,
+        mode="read_only_deterministic",
+        required_slots=("part", "period_or_date_range", "report_style"),
+        status_plan="report_generation",
+        status_nodes=(
+            "load_conversation_context",
+            "policy_gate",
+            "select_route",
+            "understand_question",
+            "merge_context_slots",
+            "clarification_gate",
+            "resolve_part",
+            "load_finished_batches",
+            "calculate_cost",
+            "build_report_json",
+            "final_answer",
+        ),
+        report_styles=("presentation", "period_comparison"),
         required_roles=("cost_analyst", "agent_admin"),
         data_scope="published_cost_data",
         risk_level="low",
@@ -155,6 +183,7 @@ def capability_manifest(
     for spec in CAPABILITY_SPECS:
         item = asdict(spec)
         item["required_slots"] = list(spec.required_slots)
+        item["report_styles"] = list(spec.report_styles)
         item.pop("status_nodes")
         item.update(
             {

@@ -250,9 +250,13 @@ class _FixtureProvider:
         self, question: str, *_args: Any, **_kwargs: Any
     ) -> dict[str, Any]:
         route = (
-            "cost_calculation"
-            if any(word in question for word in ("成本", "核算", "产品"))
-            else "system_help"
+            "report_generation"
+            if any(word in question for word in ("报表", "报告", "展示型", "周期对比"))
+            else (
+                "cost_calculation"
+                if any(word in question for word in ("成本", "核算", "产品"))
+                else "system_help"
+            )
         )
         return self._take(
             "classify_route",
@@ -284,6 +288,8 @@ def _replay_parse_cost_question(question: str) -> dict[str, Any]:
     from app.services.llm_service import (
         extract_date_range_from_question,
         extract_latest_period_from_question,
+        extract_periods_from_question,
+        infer_report_style,
     )
 
     compact_query = question.replace(" ", "")
@@ -297,6 +303,8 @@ def _replay_parse_cost_question(question: str) -> dict[str, Any]:
         part_text = "FG-001"
     date_range = extract_date_range_from_question(question)
     period = extract_latest_period_from_question(question)
+    periods = extract_periods_from_question(question)
+    report_style = infer_report_style(question)
     if date_range:
         period = date_range["end_date"][:7]
     if any(keyword in compact_query for keyword in ("对比", "变化", "环比", "原因")):
@@ -307,8 +315,14 @@ def _replay_parse_cost_question(question: str) -> dict[str, Any]:
         intent = "cost_query"
     return {
         "intent": intent,
+        "report_style": report_style,
         "part_text": part_text,
         "period": period,
+        "comparison_period": (
+            periods[-2]
+            if report_style == "period_comparison" and len(periods) >= 2
+            else ""
+        ),
         "date_range": date_range,
         "model": "fixture-model",
         "llm_call": {

@@ -7,7 +7,7 @@
       "period": "2026-06",
       "unit_cost": "53.50",
       "total_cost": "50000.00",
-      "effective_capabilities": ["system_help", "cost_calculation"],
+      "effective_capabilities": ["system_help", "cost_calculation", "report_generation"],
       "trace_redacted": true,
       "clarification_before_cost_data": true,
       "event_nodes": [
@@ -74,7 +74,7 @@
       "outcome": "completed",
       "effective_route": "system_help",
       "has_report": false,
-      "effective_capabilities": ["system_help", "cost_calculation"],
+      "effective_capabilities": ["system_help", "cost_calculation", "report_generation"],
       "trace_redacted": true,
       "event_nodes": [
         "load_conversation_context",
@@ -82,6 +82,20 @@
         "select_route",
         "final_answer"
       ]
+    }
+  },
+  {
+    "id": "period_comparison_report",
+    "turns": ["生成 FG-001 2026年6月和7月周期对比报表"],
+    "expect": {
+      "outcome": "completed",
+      "effective_route": "report_generation",
+      "has_report": true,
+      "report_style": "period_comparison",
+      "period": "2026-07",
+      "baseline_period": "2026-06",
+      "trace_redacted": true,
+      "clarification_before_cost_data": true
     }
   }
 ]

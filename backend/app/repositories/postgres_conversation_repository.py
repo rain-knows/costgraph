@@ -63,7 +63,7 @@ class PostgresConversationRepository:
         capabilities = validate_capability_ids(
             enabled_capabilities
             if enabled_capabilities is not None
-            else ["system_help", "cost_calculation"]
+            else ["system_help", "cost_calculation", "report_generation"]
         )
         with self._session() as session:
             session.add(

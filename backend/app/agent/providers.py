@@ -47,11 +47,20 @@ MODEL_OPERATION_SPECS: dict[ModelOperation, ModelOperationSpec] = {
         method_name="parse_cost_question",
         output_schema={
             "type": "object",
-            "required": ["intent", "part_text", "period", "date_range"],
+            "required": [
+                "intent",
+                "report_style",
+                "part_text",
+                "period",
+                "comparison_period",
+                "date_range",
+            ],
             "properties": {
                 "intent": {"type": "string"},
+                "report_style": {"enum": ["presentation", "period_comparison"]},
                 "part_text": {"type": "string"},
                 "period": {"type": ["string", "null"]},
+                "comparison_period": {"type": ["string", "null"]},
                 "date_range": {"type": ["object", "null"]},
             },
         },

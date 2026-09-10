@@ -17,7 +17,7 @@ RoleId = Literal["system_viewer", "cost_analyst", "agent_admin"]
 
 ROLE_CAPABILITIES: dict[RoleId, tuple[CapabilityId, ...]] = {
     "system_viewer": ("system_help",),
-    "cost_analyst": ("system_help", "cost_calculation"),
+    "cost_analyst": ("system_help", "cost_calculation", "report_generation"),
     "agent_admin": ALL_CAPABILITY_IDS,
 }
 
@@ -155,6 +155,8 @@ def build_execution_context(
         and capability in authorized
         and capability in server_allowed
     ]
+    if "report_generation" in effective and "cost_calculation" not in effective:
+        effective.remove("report_generation")
     return ExecutionContext(
         principal=principal,
         requested_capabilities=tuple(requested),

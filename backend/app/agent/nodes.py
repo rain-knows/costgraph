@@ -24,9 +24,12 @@ from app.agent.status import status_for_context, update_status_bar
 from app.domain.authorization import execution_context_from_state
 from app.domain.conversation import empty_conversation_context
 from app.services.llm_service import (
+    COMPARISON_REPORT_KEYWORDS,
     extract_date_range_from_question,
     extract_latest_period_from_question,
+    extract_periods_from_question,
     get_deepseek_model,
+    infer_report_style,
 )
 
 COST_KEYWORDS = (
@@ -34,12 +37,12 @@ COST_KEYWORDS = (
     "单位成本",
     "构成",
     "核算",
-    "报表",
     "产品",
     "零件",
     "工序",
     "产量",
 )
+REPORT_ROUTE_KEYWORDS = ("报表", "报告", "展示型", "周期对比")
 AMBIGUOUS_ROUTE_KEYWORDS = ("查询", "分析", "数据", "检查", "看一下")
 FOLLOWUP_COST_KEYWORDS = (
     "上个月",
@@ -128,7 +131,14 @@ def _deterministic_route(
 ) -> RouteId | None:
     context = context or {}
     if context.get("pending_clarification"):
-        return "cost_calculation"
+        previous_route = context.get("last_effective_route")
+        return (
+            previous_route
+            if previous_route in {"cost_calculation", "report_generation"}
+            else "cost_calculation"
+        )
+    if any(keyword in question for keyword in REPORT_ROUTE_KEYWORDS):
+        return "report_generation"
     if any(keyword in question for keyword in COST_KEYWORDS):
         return "cost_calculation"
     has_month_followup = bool(
@@ -176,9 +186,13 @@ def select_route(
         route_reason = classified["reason"]
     else:
         route_reason = (
-            "识别到成本查询意图。"
-            if route == "cost_calculation"
-            else "未识别到成本核算意图，进入系统说明。"
+            "识别到报表生成意图。"
+            if route == "report_generation"
+            else (
+                "识别到成本查询意图。"
+                if route == "cost_calculation"
+                else "未识别到成本核算意图，进入系统说明。"
+            )
         )
 
     requested_route = route
@@ -192,7 +206,7 @@ def select_route(
     if effective_route == "blocked":
         status = "error"
         readonly_answer = (
-            "当前未开启成本核算能力。请切换到自动路由或在手动模式中开启“成本核算”，"
+            "当前未开启此请求所需的成本核算或报表生成能力。请切换到自动路由或开启对应能力，"
             "系统不会读取成本数据、执行计算或生成金额。"
         )
     elif effective_route == "system_help":
@@ -208,6 +222,7 @@ def select_route(
         "source": route_source,
         "reason": route_reason,
         "allowed_routes": allowed_routes,
+        "requested_report_style": infer_report_style(query),
     }
     ai_trace = {**ai_trace, "route_selection": route_selection}
     summary = f"路由确定为 {effective_route}：{route_reason}"
@@ -255,6 +270,8 @@ def understand_question(
     part_text = parsed.get("part_text", "")
     period = parsed["period"]
     date_range = parsed.get("date_range")
+    report_style = parsed.get("report_style", "presentation")
+    comparison_period = parsed.get("comparison_period", "")
     intent = parsed["intent"]
     status = "success"
     period_text = (
@@ -273,11 +290,18 @@ def understand_question(
 
     updates: dict[str, Any] = {
         "intent": intent,
+        "report_style": report_style,
+        "comparison_period": comparison_period,
         "part_text": part_text,
         "period": period,
         "date_range": date_range,
         "explicit_part": _has_explicit_part_mention(query, part_text),
         "explicit_period": bool(extract_latest_period_from_question(query)),
+        "explicit_comparison_period": len(extract_periods_from_question(query)) >= 2,
+        "explicit_report_style": any(
+            keyword in query
+            for keyword in (*COMPARISON_REPORT_KEYWORDS, "展示", "概览", "汇总")
+        ),
         "explicit_date_range": bool(extract_date_range_from_question(query)),
         "ai_trace": ai_trace,
         "model_info": {
@@ -329,6 +353,10 @@ def _infer_followup_period(question: str, base_period: str) -> str:
     return f"{base_period[:4]}-{month:02d}"
 
 
+def _default_comparison_period(question: str, target_period: str) -> str:
+    return _shift_period(target_period, -12 if "同比" in question else -1)
+
+
 def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
     started_at = _now()
     context = state.get("conversation_context", empty_conversation_context())
@@ -337,6 +365,7 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
     explicit_part = state.get("explicit_part", False)
     explicit_period = state.get("explicit_period", False)
     explicit_date_range = state.get("explicit_date_range", False)
+    explicit_report_style = state.get("explicit_report_style", False)
 
     part_text = state.get("part_text", "") if explicit_part else ""
     inherited_part: str | None = None
@@ -363,11 +392,33 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
     if date_range:
         period = date_range["end_date"][:7]
 
+    report_style = state.get("report_style", "presentation")
+    inherited_report_style: str | None = None
+    if not explicit_report_style and context.get("current_report_style"):
+        report_style = context["current_report_style"]
+        inherited_report_style = report_style
+    comparison_period = (
+        state.get("comparison_period", "")
+        if state.get("explicit_comparison_period", False)
+        else ""
+    )
+    inherited_comparison_period: str | None = None
+    if report_style == "period_comparison":
+        if not comparison_period and context.get("current_comparison_period"):
+            comparison_period = context["current_comparison_period"]
+            inherited_comparison_period = comparison_period
+        if not comparison_period and period:
+            comparison_period = _default_comparison_period(query, period)
+    else:
+        comparison_period = ""
+
     context_used = {
         **state.get("context_used", {}),
         "inherited_part": inherited_part,
         "inherited_period": inherited_period,
         "inherited_date_range": inherited_date_range,
+        "inherited_report_style": inherited_report_style,
+        "inherited_comparison_period": inherited_comparison_period,
     }
     inherited_labels = [
         label
@@ -391,6 +442,8 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
                 "period": period,
                 "date_range": date_range,
                 "intent": state.get("intent", "cost_query"),
+                "report_style": report_style,
+                "comparison_period": comparison_period,
             },
             "recent_message_count": len(state.get("recent_messages", [])),
         },
@@ -401,11 +454,15 @@ def merge_context_slots(state: CostAgentState) -> dict[str, Any]:
             "part_text": part_text,
             "period": period,
             "date_range": date_range,
+            "report_style": report_style,
+            "comparison_period": comparison_period,
             "resolved_slots": {
                 "part_text": part_text,
                 "period": period,
                 "date_range": date_range,
                 "intent": state.get("intent", "cost_query"),
+                "report_style": report_style,
+                "comparison_period": comparison_period,
             },
             "context_used": context_used,
             "ai_trace": ai_trace,
@@ -447,6 +504,11 @@ def clarification_gate(
         missing_slots.append("period_or_date_range")
     if date_range and date_range["start_date"] > date_range["end_date"]:
         invalid_slots.append("date_range")
+    if (
+        state.get("report_style") == "period_comparison"
+        and state.get("comparison_period") == period
+    ):
+        invalid_slots.append("comparison_period")
 
     if not missing_slots and not invalid_slots:
         part = candidates[0]
@@ -466,7 +528,7 @@ def clarification_gate(
                 "missing_slots": [],
                 "invalid_slots": [],
                 "clarification": None,
-                "status_plan": "cost_calculation",
+                "status_plan": state.get("effective_route", "cost_calculation"),
                 "ai_trace": ai_trace,
             },
             "clarification_gate",
@@ -484,7 +546,9 @@ def clarification_gate(
         else []
     )
 
-    if "date_range" in invalid_slots:
+    if "comparison_period" in invalid_slots:
+        question = "周期对比报表需要两个不同期间，请重新提供基准期和目标期。"
+    elif "date_range" in invalid_slots:
         question = "开始日期不能晚于结束日期，请重新提供核算日期范围。"
     elif "part" in invalid_slots:
         question = f"没有唯一匹配到“{part_text}”，请选择要核算的零件。"
@@ -538,9 +602,11 @@ def request_clarification(state: CostAgentState) -> dict[str, Any]:
         **state.get("conversation_context", {}),
         "current_part_text": state.get("part_text", ""),
         "current_period": state.get("period", ""),
+        "current_comparison_period": state.get("comparison_period", ""),
+        "current_report_style": state.get("report_style", "presentation"),
         "current_date_range": state.get("date_range"),
         "last_intent": state.get("intent", "cost_query"),
-        "last_effective_route": "cost_calculation",
+        "last_effective_route": state.get("effective_route", "cost_calculation"),
         "pending_clarification": clarification,
         "partial_slots": state.get("resolved_slots", {}),
     }
@@ -588,7 +654,12 @@ def final_answer(state: CostAgentState) -> dict[str, Any]:
             if date_range
             else state["period"]
         )
-        final_message = f"已完成{part['part_number']} {period_text} 成本分析。"
+        style_text = (
+            f"{state.get('comparison_period')} 与 {state['period']} 周期对比报表"
+            if state.get("report_style") == "period_comparison"
+            else f"{period_text} 展示型报表"
+        )
+        final_message = f"已生成 {part['part_number']} {style_text}。"
         status = "success"
         summary = final_message
         outcome = "completed"
@@ -600,7 +671,10 @@ def final_answer(state: CostAgentState) -> dict[str, Any]:
         "pending_clarification": None,
         "partial_slots": {},
     }
-    if outcome == "completed" and state.get("effective_route") == "cost_calculation":
+    if outcome == "completed" and state.get("effective_route") in {
+        "cost_calculation",
+        "report_generation",
+    }:
         part = state["part"]
         context.update(
             {
@@ -608,6 +682,8 @@ def final_answer(state: CostAgentState) -> dict[str, Any]:
                 "current_part_id": part["part_id"],
                 "current_part_number": part["part_number"],
                 "current_period": state.get("period", ""),
+                "current_comparison_period": state.get("comparison_period", ""),
+                "current_report_style": state.get("report_style", "presentation"),
                 "current_date_range": state.get("date_range"),
                 "last_intent": state.get("intent", "cost_query"),
                 "last_report_run_id": state["run_id"],
@@ -641,7 +717,7 @@ def route_after_clarification_gate(state: CostAgentState) -> str:
 
 
 def route_after_select_route(state: CostAgentState) -> str:
-    if state.get("workflow_mode") == "cost_calculation":
+    if state.get("workflow_mode") in {"cost_calculation", "report_generation"}:
         return "understand_question"
     return "final_answer"
 

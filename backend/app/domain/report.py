@@ -4,9 +4,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-REPORT_SCHEMA_VERSION = "2.0"
+REPORT_SCHEMA_VERSION = "3.0"
+ReportStyle = Literal["presentation", "period_comparison"]
 
 
 class ReportPart(BaseModel):
@@ -201,10 +202,37 @@ class ReportEvent(BaseModel):
     finished_at: str | None = None
 
 
-class CostReportV2(BaseModel):
+class ComparisonMetric(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    report_schema_version: Literal["2.0"]
+    metric_id: str
+    label: str
+    unit: str
+    baseline_value: Decimal
+    current_value: Decimal
+    delta: Decimal
+    change_rate: Decimal | None = None
+
+
+class PeriodComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    baseline_period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    current_period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    baseline_batch_summary: BatchSummary
+    baseline_manufacturing_view: ManufacturingCostView
+    baseline_material_labor_overhead_view: MaterialLaborOverheadView
+    baseline_variable_fixed_view: VariableFixedCostView
+    baseline_finished_batches: list[FinishedBatchCost] = Field(min_length=1)
+    headline_metrics: list[ComparisonMetric] = Field(min_length=4)
+    manufacturing_groups: list[ComparisonMetric] = Field(min_length=6, max_length=6)
+
+
+class CostReportV3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_schema_version: Literal["3.0"]
+    report_style: ReportStyle
     rule_version: str
     prompt_version: str
     code_version: str
@@ -212,6 +240,7 @@ class CostReportV2(BaseModel):
     run_id: str
     part: ReportPart
     period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    comparison: PeriodComparison | None = None
     batch_summary: BatchSummary
     summary_cards: list[SummaryCard] = Field(min_length=3)
     manufacturing_view: ManufacturingCostView
@@ -227,3 +256,13 @@ class CostReportV2(BaseModel):
     model_info: dict[str, Any]
     ai_trace: PublicAiTrace
     agent_steps: list[ReportEvent]
+
+    @model_validator(mode="after")
+    def validate_report_style_payload(self) -> CostReportV3:
+        if self.report_style == "period_comparison" and self.comparison is None:
+            raise ValueError("周期对比报表必须提供 comparison")
+        if self.report_style == "presentation" and self.comparison is not None:
+            raise ValueError("展示型报表不能包含 comparison")
+        if self.comparison and self.comparison.current_period != self.period:
+            raise ValueError("comparison.current_period 必须等于 report.period")
+        return self

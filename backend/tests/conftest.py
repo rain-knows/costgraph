@@ -9,6 +9,10 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("DEEPSEEK_API_KEY", "")
+os.environ.setdefault(
+    "AGENT_SERVER_ALLOWED_CAPABILITIES",
+    "system_help,cost_calculation,report_generation",
+)
 
 
 @pytest.fixture(autouse=True)

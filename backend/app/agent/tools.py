@@ -70,6 +70,9 @@ def build_report_tool(
     model_info: dict[str, Any] | None = None,
     ai_trace: dict[str, Any] | None = None,
     lineage: dict[str, Any] | None = None,
+    report_style: str = "presentation",
+    comparison_period: str | None = None,
+    comparison_calculation_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return build_report_json(
         run_id,
@@ -81,4 +84,7 @@ def build_report_tool(
         model_info,
         ai_trace,
         lineage,
+        report_style,
+        comparison_period,
+        comparison_calculation_result,
     )

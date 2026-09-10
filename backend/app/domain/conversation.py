@@ -24,6 +24,8 @@ class ConversationContext(TypedDict, total=False):
     current_part_id: str
     current_part_number: str
     current_period: str
+    current_comparison_period: str
+    current_report_style: str
     current_date_range: dict[str, str] | None
     last_intent: str
     last_effective_route: str
@@ -35,6 +37,8 @@ class ConversationContext(TypedDict, total=False):
 class ContextUsed(TypedDict, total=False):
     inherited_part: str | None
     inherited_period: str | None
+    inherited_comparison_period: str | None
+    inherited_report_style: str | None
     inherited_date_range: dict[str, str] | None
     recent_message_count: int
 
@@ -45,6 +49,8 @@ def empty_conversation_context() -> ConversationContext:
         "current_part_id": "",
         "current_part_number": "",
         "current_period": "",
+        "current_comparison_period": "",
+        "current_report_style": "presentation",
         "current_date_range": None,
         "last_intent": "",
         "last_effective_route": "",

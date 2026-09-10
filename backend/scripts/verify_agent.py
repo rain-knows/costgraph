@@ -46,7 +46,7 @@ if __name__ == "__main__":
     assert result["outcome"] == "completed"
     report = result["report_json"]
     assert report is not None
-    assert report["report_schema_version"] == "2.0"
+    assert report["report_schema_version"] == "3.0"
     assert [
         Decimal(str(group["metric"]["amount"]))
         for group in report["manufacturing_view"]["groups"]

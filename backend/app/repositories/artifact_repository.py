@@ -6,7 +6,7 @@ from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 from app.domain.authorization import ExecutionPrincipal
-from app.domain.report import CostReportV2
+from app.domain.report import CostReportV3
 
 
 class ArtifactRepository(Protocol):
@@ -40,7 +40,7 @@ class ArtifactRepository(Protocol):
 
 
 def _canonical_report(report: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    normalized = CostReportV2.model_validate(report).model_dump(mode="json")
+    normalized = CostReportV3.model_validate(report).model_dump(mode="json")
     encoded = json.dumps(
         normalized,
         ensure_ascii=False,

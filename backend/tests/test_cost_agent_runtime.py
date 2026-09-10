@@ -1,5 +1,6 @@
 import app.agent.tools as agent_tools
 from app.agent.graph import run_runtime, stream_runtime
+from app.agent.nodes import _default_comparison_period
 from app.agent.providers import DeepSeekProviderAdapter
 from app.agent.routes import cost_nodes
 from app.agent.runtime_contracts import HarnessCallOutcome, RuntimeRunRequest
@@ -16,11 +17,24 @@ from evaluation.fixture_model_provider import (
 def _request(question: str) -> RuntimeRunRequest:
     return RuntimeRunRequest(
         question=question,
-        requested_capabilities=["system_help", "cost_calculation"],
+        requested_capabilities=[
+            "system_help",
+            "cost_calculation",
+            "report_generation",
+        ],
     )
 
 
-def test_runtime_calculates_finished_part_and_builds_v2_report(monkeypatch) -> None:
+def test_default_comparison_period_distinguishes_month_over_month_and_year_over_year() -> (
+    None
+):
+    assert _default_comparison_period("生成环比报表", "2026-07") == "2026-06"
+    assert _default_comparison_period("生成同比报表", "2026-07") == "2025-07"
+
+
+def test_runtime_calculates_finished_part_and_builds_presentation_report(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(agent_tools, "cost_repository", CostFixtureRepository())
     result = run_runtime(
         _request("查询产品A 2026年6月单位成本，并说明成本构成"),
@@ -28,13 +42,38 @@ def test_runtime_calculates_finished_part_and_builds_v2_report(monkeypatch) -> N
     )
 
     assert result["outcome"] == "completed"
-    # The Agent report is schema 2.0 and delegates all money arithmetic to the
+    # The Agent report delegates all money arithmetic to the
     # deterministic cost service.  Keep this runtime assertion intentionally
     # focused on the public shape; exact golden amounts are covered by the API
     # tests.
-    assert result["report_json"]["report_schema_version"] == "2.0"
+    assert result["report_json"]["report_schema_version"] == "3.0"
+    assert result["report_json"]["report_style"] == "presentation"
+    assert result["report_json"]["comparison"] is None
     assert result["report_json"]["finished_batches"]
     assert "load_finished_batches" in [event["node"] for event in result["events"]]
+
+
+def test_runtime_builds_period_comparison_report_from_two_explicit_periods(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(agent_tools, "cost_repository", CostFixtureRepository())
+    result = run_runtime(
+        _request("生成产品A 2026年6月和7月周期对比报表"),
+        runtime_services=build_fixture_runtime_services(),
+    )
+
+    assert result["outcome"] == "completed"
+    assert result["status_bar"]["effective_route"] == "report_generation"
+    report = result["report_json"]
+    assert report["report_style"] == "period_comparison"
+    assert report["period"] == "2026-07"
+    assert report["comparison"]["baseline_period"] == "2026-06"
+    assert report["comparison"]["current_period"] == "2026-07"
+    assert len(report["comparison"]["manufacturing_groups"]) == 6
+    unit_cost = report["comparison"]["headline_metrics"][0]
+    assert float(unit_cost["delta"]) == float(unit_cost["current_value"]) - float(
+        unit_cost["baseline_value"]
+    )
 
 
 def test_report_node_uses_registered_analysis_provider_signature(monkeypatch) -> None:

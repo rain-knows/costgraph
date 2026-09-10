@@ -62,7 +62,11 @@ def main() -> int:
                         message_id=(
                             f"eval-{case['id']}-{trial}-{index}-{uuid4().hex[:8]}"
                         ),
-                        requested_capabilities=["system_help", "cost_calculation"],
+                        requested_capabilities=[
+                            "system_help",
+                            "cost_calculation",
+                            "report_generation",
+                        ],
                         conversation_context=conversation_context,
                         recent_messages=recent_messages,
                         include_internal=True,
@@ -144,6 +148,10 @@ def validate_case(result: dict, expect: dict, clarification_count: int) -> list[
         "effective_route": (result.get("status_bar") or {}).get("effective_route"),
         "has_report": report is not None,
         "period": report.get("period") if report else None,
+        "report_style": report.get("report_style") if report else None,
+        "baseline_period": (
+            (report.get("comparison") or {}).get("baseline_period") if report else None
+        ),
         "unit_cost": report["summary_cards"][0]["value"] if report else None,
         "total_cost": report["summary_cards"][1]["value"] if report else None,
         "clarification_count": clarification_count,

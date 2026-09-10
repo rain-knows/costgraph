@@ -73,6 +73,7 @@ def load_finished_batches(
     started_at = _now()
     services = _runtime_services(state, runtime_services)
     period = state["period"]
+    comparison_period = state.get("comparison_period", "")
     try:
         batches = require_call_value(
             services.invoke_tool(
@@ -81,6 +82,18 @@ def load_finished_batches(
                 state["execution_context"],
                 node="load_finished_batches",
             )
+        )
+        comparison_batches = (
+            require_call_value(
+                services.invoke_tool(
+                    "load_finished_batches",
+                    {"period": comparison_period},
+                    state["execution_context"],
+                    node="load_finished_batches",
+                )
+            )
+            if state.get("report_style") == "period_comparison"
+            else []
         )
     except (PermissionError, ValueError, RuntimeServiceError) as exc:
         summary = f"成本批次读取失败：{exc}"
@@ -97,6 +110,11 @@ def load_finished_batches(
         batches = [
             item for item in batches if item.get("part", {}).get("part_id") == part_id
         ]
+        comparison_batches = [
+            item
+            for item in comparison_batches
+            if item.get("part", {}).get("part_id") == part_id
+        ]
     if not batches:
         summary = f"缺少 {part_id or '指定零件'} {period} 的已发布产成品批次。"
         return _with_event(
@@ -107,12 +125,31 @@ def load_finished_batches(
             summary,
             started_at,
         )
+    if state.get("report_style") == "period_comparison" and not comparison_batches:
+        summary = (
+            f"缺少 {part_id or '指定零件'} {comparison_period} 的已发布产成品批次。"
+        )
+        return _with_event(
+            state,
+            {"errors": _append_error(state, summary)},
+            "load_finished_batches",
+            "error",
+            summary,
+            started_at,
+        )
+    total = len(batches) + len(comparison_batches)
+    period_summary = (
+        f"{comparison_period} 与 {period}" if comparison_batches else period
+    )
     return _with_event(
         state,
-        {"batch_sources": batches},
+        {
+            "batch_sources": batches,
+            "comparison_batch_sources": comparison_batches,
+        },
         "load_finished_batches",
         "success",
-        f"读取到 {period} 的 {len(batches)} 个产成品批次。",
+        f"读取到 {period_summary} 共 {total} 个产成品批次。",
         started_at,
     )
 
@@ -138,6 +175,10 @@ def calculate_cost(
     from app.services.cost_calculation_service import aggregate_part_period_costs
 
     result = aggregate_part_period_costs(batches)
+    comparison_batches = state.get("comparison_batch_sources", [])
+    comparison_result = (
+        aggregate_part_period_costs(comparison_batches) if comparison_batches else None
+    )
     trace = {
         **state.get("ai_trace", _new_ai_trace()),
         "deterministic_calculation": {
@@ -148,10 +189,14 @@ def calculate_cost(
     }
     return _with_event(
         state,
-        {"calculation_result": result, "ai_trace": trace},
+        {
+            "calculation_result": result,
+            "comparison_result": comparison_result,
+            "ai_trace": trace,
+        },
         "calculate_cost",
         "success",
-        f"完成 {len(batches)} 个批次的确定性成本卷积。",
+        f"完成 {len(batches) + len(comparison_batches)} 个批次的确定性成本卷积。",
         started_at,
     )
 
@@ -162,6 +207,16 @@ def build_report_json(
     started_at = _now()
     services = _runtime_services(state, runtime_services)
     result = state["calculation_result"]
+    comparison_result = state.get("comparison_result")
+    analysis_facts = (
+        {
+            **result,
+            "comparison_period": state.get("comparison_period"),
+            "comparison": comparison_result,
+        }
+        if comparison_result
+        else result
+    )
     analysis_result = require_call_value(
         services.invoke_model(
             "generate_cost_analysis",
@@ -169,7 +224,7 @@ def build_report_json(
             args=(
                 state.get("part") or result["part"],
                 state["period"],
-                result,
+                analysis_facts,
                 status_for_context(state, "build_report_json"),
             ),
         )
@@ -177,12 +232,20 @@ def build_report_json(
     analysis_text = analysis_result["analysis_text"]
     ai_trace = _append_llm_call(state, analysis_result["llm_call"])
     events = _append_event(
-        state, "build_report_json", "success", "生成成本 v2 结构化报告。", started_at
+        state,
+        "build_report_json",
+        "success",
+        f"生成{state.get('report_style', 'presentation')}结构化报告。",
+        started_at,
     )
     lineage = build_lineage(
         part_id=result["part"]["part_id"],
         period=state["period"],
-        batch_sources=state.get("batch_sources", []),
+        batch_sources=[
+            *state.get("batch_sources", []),
+            *state.get("comparison_batch_sources", []),
+        ],
+        comparison_period=state.get("comparison_period") or None,
         source=(state.get("execution_context") or {})
         .get("data_scope", {})
         .get("source", "postgresql_cost_data"),
@@ -201,6 +264,9 @@ def build_report_json(
                     "model_info": state.get("model_info", {}),
                     "ai_trace": build_public_ai_trace(ai_trace),
                     "lineage": lineage,
+                    "report_style": state.get("report_style", "presentation"),
+                    "comparison_period": state.get("comparison_period") or None,
+                    "comparison_calculation_result": comparison_result,
                 },
                 state["execution_context"],
                 node="build_report_json",

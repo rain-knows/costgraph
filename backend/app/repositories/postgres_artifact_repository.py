@@ -16,7 +16,7 @@ from app.domain.errors import (
     ArtifactNotFoundError,
     ArtifactPersistenceError,
 )
-from app.domain.report import CostReportV2
+from app.domain.report import CostReportV3
 
 
 class PostgresArtifactRepository:
@@ -254,7 +254,7 @@ class PostgresArtifactRepository:
 
     @staticmethod
     def _to_record(row: AgentArtifact) -> dict[str, Any]:
-        report = CostReportV2.model_validate(row.report_json).model_dump(mode="json")
+        report = CostReportV3.model_validate(row.report_json).model_dump(mode="json")
         return {
             "artifact_id": row.artifact_id,
             "artifact_type": row.artifact_type,

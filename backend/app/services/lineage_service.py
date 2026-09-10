@@ -11,6 +11,7 @@ def build_lineage(
     *,
     part_id: str,
     period: str,
+    comparison_period: str | None = None,
     batch_sources: list[dict[str, Any]],
     source: str = "postgresql_cost_data",
 ) -> dict[str, Any]:
@@ -42,6 +43,7 @@ def build_lineage(
     snapshot_material = {
         "part_id": part_id,
         "period": period,
+        "comparison_period": comparison_period,
         "source_ids": source_ids,
         "records": canonical_sources,
     }
@@ -56,7 +58,11 @@ def build_lineage(
     return {
         "schema_version": LINEAGE_SCHEMA_VERSION,
         "source": source,
-        "query_scope": {"part_id": part_id, "period": period},
+        "query_scope": {
+            "part_id": part_id,
+            "period": period,
+            "comparison_period": comparison_period,
+        },
         "tables": [
             {
                 "name": name,
