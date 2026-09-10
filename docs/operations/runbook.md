@@ -37,7 +37,7 @@ backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.ba
 
 - 批次状态为 `published`，`error_rows=0`。
 - 四类行数与样例文件一致。
-- 3 个产成品跨 2 个期间形成 6 个最终批次。
+- 3 个汽车装饰件产成品跨 2 个期间形成 6 个最终批次；黄金批次应追溯到注塑成型、火焰处理与表皮包覆、卡扣压装与门板总成装配三道连续工序。
 - 当前租户只有一个 `published` 快照。
 
 格式、关系和 48 项代码见[成本核算格式](../data/cost-accounting-format.md)。

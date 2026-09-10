@@ -45,10 +45,18 @@ def test_golden_finished_batch_has_three_view_values() -> None:
     assert detail.variable_fixed_view.fixed_cost_1.unit_cost == Decimal("20.00")
     assert detail.variable_fixed_view.total_cost_2.unit_cost == Decimal("53.50")
     assert detail.trace.root_event_id == "E-FG-001"
-    assert len(detail.trace.nodes) >= 1
+    assert len(detail.trace.nodes) == 5
+    assert len(detail.trace.edges) == 4
     assert len(detail.trace.records) >= 1
+    assert [
+        node.process_name
+        for node in detail.trace.nodes
+        if node.event_type == "process"
+    ] == ["注塑成型", "火焰处理与表皮包覆", "卡扣压装与门板总成装配"]
     assert {edge.input_id for edge in detail.trace.edges} >= {
         "I-RAW-FG1",
+        "I-INJ-PAINT1",
+        "I-PAINT-FG1",
         "I-SEMI-FG1",
     }
 

@@ -51,6 +51,28 @@ def test_sample_files_are_valid_import_snapshot() -> None:
     assert errors == [], [(item.error_code, item.error_message) for item in errors]
 
 
+def test_sample_contains_multi_step_automotive_trim_trace() -> None:
+    parts, events, inputs, _ = _snapshot()
+    part_by_id = {part["part_id"]: part for part in parts}
+    event_by_id = {event["event_id"]: event for event in events}
+    predecessor = {
+        edge["event_id"]: edge["source_event_id"]
+        for edge in inputs
+        if edge["input_id"] != "I-SEMI-FG1"
+    }
+
+    assert all("汽车" in str(part["product_family"]) for part in parts)
+    assert part_by_id["P-FG-001"]["part_description"] == "左前门内饰板总成"
+    assert [
+        event_by_id["E-INJ-001"]["process_name"],
+        event_by_id["E-PAINT-001"]["process_name"],
+        event_by_id["E-FG-001"]["process_name"],
+    ] == ["注塑成型", "火焰处理与表皮包覆", "卡扣压装与门板总成装配"]
+    assert predecessor["E-INJ-001"] == "E-RAW-001"
+    assert predecessor["E-PAINT-001"] == "E-INJ-001"
+    assert predecessor["E-FG-001"] == "E-PAINT-001"
+
+
 def test_import_validation_rejects_currency_and_missing_event() -> None:
     parts, events, inputs, records = _snapshot()
     bad_records = [deepcopy(records[0])]

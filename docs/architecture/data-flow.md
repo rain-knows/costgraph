@@ -13,6 +13,8 @@ parts/cost_events/cost_event_inputs/cost_records JSON
 
 JSON 是导入输入，不是应用请求的 Repository。失败批次不可查询；相同租户、来源系统和快照哈希幂等跳过。导入目标始终是独立 CostGraph PostgreSQL 数据库。
 
+规范样例以汽车装饰件工厂为业务语境。黄金批次从 PP/EPDM 单件料包与外购卡扣开始，经过注塑成型、火焰处理与表皮包覆、总成装配三道工艺后形成左前门内饰板总成，用于验证多层、多投入成本卷积与追溯。
+
 ## 成本只读查询
 
 ```text
