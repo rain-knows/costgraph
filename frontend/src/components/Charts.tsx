@@ -2,10 +2,10 @@
 import type { EChartsOption } from 'echarts'
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
+import { AriaComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([BarChart, LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer])
+echarts.use([BarChart, LineChart, AriaComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer])
 
 type Palette = {
   fg: string
@@ -30,14 +30,17 @@ export function EChart({ build, ariaLabel, className = 'chart-box' }: { build: (
   useEffect(() => {
     if (!ref.current) return
     const chart = echarts.init(ref.current, undefined, { renderer: 'canvas' })
-    const render = () => chart.setOption(build(readPalette()), true)
+    const render = () => chart.setOption({
+      ...build(readPalette()),
+      aria: { enabled: true, description: ariaLabel, decal: { show: true } },
+    }, true)
     render()
     const resize = new ResizeObserver(() => chart.resize())
     const theme = new MutationObserver(render)
     resize.observe(ref.current)
     theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
     return () => { resize.disconnect(); theme.disconnect(); chart.dispose() }
-  }, [build])
+  }, [ariaLabel, build])
 
   return <div ref={ref} className={className} role="img" aria-label={ariaLabel} />
 }

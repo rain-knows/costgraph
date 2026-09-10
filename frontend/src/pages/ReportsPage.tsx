@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FileBarChart2, GitBranch, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, FileBarChart2, GitBranch, Presentation, RotateCcw, Scale, Search, Trash2, X } from 'lucide-react'
 import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { getArtifact, listArtifacts, restoreArtifact, trashArtifact, type ArtifactDetail, type ArtifactSummary } from '../api/artifacts'
+import type { ComparisonMetric } from '../api/agent'
 import type { AppOutletContext } from '../components/AppShell'
 import { axis, EChart, tooltip } from '../components/Charts'
 import { CostViewSummary } from '../components/CostViews'
@@ -191,6 +192,30 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
       data: report?.finished_batches.map((item) => Number(item.material_labor_overhead_view[key].unit_cost)) ?? [],
     })),
   }), [report])
+  const comparisonChart = useCallback((palette: Parameters<typeof axis>[0]) => ({
+    animationDuration: 180,
+    color: [palette.muted, palette.accent],
+    grid: { left: 72, right: 20, top: 42, bottom: 56 },
+    tooltip: tooltip(palette),
+    legend: {
+      top: 0,
+      right: 4,
+      textStyle: { color: palette.muted, fontSize: 10 },
+      data: report?.comparison ? [report.comparison.baseline_period, report.comparison.current_period] : [],
+    },
+    xAxis: {
+      type: 'category' as const,
+      data: report?.comparison?.manufacturing_groups.map((item) => item.label) ?? [],
+      ...axis(palette),
+      splitLine: { show: false },
+      axisLabel: { color: palette.muted, fontSize: 10, interval: 0, rotate: 16 },
+    },
+    yAxis: { type: 'value' as const, ...axis(palette), axisLabel: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10 } },
+    series: report?.comparison ? [
+      { name: report.comparison.baseline_period, type: 'bar' as const, barMaxWidth: 28, data: report.comparison.manufacturing_groups.map((item) => Number(item.baseline_value)) },
+      { name: report.comparison.current_period, type: 'bar' as const, barMaxWidth: 28, data: report.comparison.manufacturing_groups.map((item) => Number(item.current_value)) },
+    ] : [],
+  }), [report])
 
   async function remove() {
     setActionLoading(true)
@@ -207,24 +232,26 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
 
   return <div>
     <PageHeader
-      title={report ? `${report.part.part_description} 成本报表` : '成本报表'}
+      title={report ? `${report.part.part_description} ${report.report_style === 'period_comparison' ? '周期对比报表' : '展示型报表'}` : '成本报表'}
       actions={<>
+        {report ? <Badge>{report.report_style === 'period_comparison' ? <><Scale className="h-3.5 w-3.5" />周期对比</> : <><Presentation className="h-3.5 w-3.5" />展示</>}</Badge> : null}
         {artifact && !artifact.deleted_at ? <Button variant="danger" disabled={actionLoading} onClick={() => setConfirmOpen(true)}><Trash2 className="h-4 w-4" />移入回收站</Button> : null}
       </>}
     />
     <RequestState loading={loading} error={error} empty={!artifact} onRetry={() => setReload((value) => value + 1)}>
       {report ? <>
-        <section className="grid grid-cols-5 border-b border-[var(--border-soft)] mobile-stack" aria-label="报表批次指标">
-          <ReportMetric label="批次数" value={String(report.batch_summary.batch_count)} />
-          <ReportMetric label="完工数量" value={formatDecimal(report.batch_summary.completed_quantity, 4)} />
-          <ReportMetric label="合格数量" value={formatDecimal(report.batch_summary.qualified_quantity, 4)} />
-          <ReportMetric label="不良数量" value={formatDecimal(report.batch_summary.defective_quantity, 4)} />
-          <ReportMetric label="合格率" value={formatRate(report.batch_summary.quality_rate)} />
-        </section>
+        {report.comparison ? <ComparisonMetrics metrics={report.comparison.headline_metrics} baselinePeriod={report.comparison.baseline_period} currentPeriod={report.comparison.current_period} /> :
+          <section className="grid grid-cols-5 border-b border-[var(--border-soft)] mobile-stack" aria-label="报表批次指标">
+            <ReportMetric label="批次数" value={String(report.batch_summary.batch_count)} />
+            <ReportMetric label="完工数量" value={formatDecimal(report.batch_summary.completed_quantity, 4)} />
+            <ReportMetric label="合格数量" value={formatDecimal(report.batch_summary.qualified_quantity, 4)} />
+            <ReportMetric label="不良数量" value={formatDecimal(report.batch_summary.defective_quantity, 4)} />
+            <ReportMetric label="合格率" value={formatRate(report.batch_summary.quality_rate)} />
+          </section>}
         <section className="grid grid-cols-[minmax(0,1fr)_minmax(360px,.7fr)] border-b border-[var(--border-soft)] mobile-stack">
           <article className="min-w-0 border-r border-[var(--border-soft)]">
-            <div className="panel-head"><div><h2 className="section-title">批次料工费构成</h2><p className="meta mt-1">各批次服务端单位成本</p></div></div>
-            <div className="p-4"><EChart build={batchChart} ariaLabel={`${report.part.part_description} 批次料工费构成`} /></div>
+            <div className="panel-head"><div><h2 className="section-title">{report.comparison ? '六类制造成本单位对比' : '批次料工费构成'}</h2><p className="meta mt-1">{report.comparison ? `${report.comparison.baseline_period} 基准期 / ${report.comparison.current_period} 目标期` : '各批次服务端单位成本'}</p></div></div>
+            <div className="p-4"><EChart build={report.comparison ? comparisonChart : batchChart} ariaLabel={report.comparison ? `${report.part.part_description} 六类制造成本周期对比` : `${report.part.part_description} 批次料工费构成`} /></div>
           </article>
           <article className="p-5">
             <div className="flex items-center gap-2"><GitBranch className="h-4 w-4" /><h2 className="section-title">分析结论</h2></div>
@@ -235,6 +262,8 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
             </div>)}
           </article>
         </section>
+        {report.comparison ? <ComparisonTable metrics={report.comparison.manufacturing_groups} baselinePeriod={report.comparison.baseline_period} currentPeriod={report.comparison.current_period} /> : null}
+        {report.comparison ? <div className="border-b border-[var(--border-soft)] bg-[var(--surface)] px-5 py-3"><p className="label">目标期成本结构 · {report.comparison.current_period}</p></div> : null}
         <CostViewSummary
           manufacturing={report.manufacturing_view}
           materialLaborOverhead={report.material_labor_overhead_view}
@@ -242,10 +271,14 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
         />
         <section className="grid grid-cols-[minmax(0,1fr)_360px] border-t border-[var(--border-soft)] mobile-stack">
           <article className="min-w-0 border-r border-[var(--border-soft)]">
-            <div className="panel-head"><div><h2 className="section-title">产成品批次</h2><p className="meta mt-1">进入批次可查看完整成本 DAG</p></div><Badge>{report.finished_batches.length} 个</Badge></div>
-            <div className="table-scroll"><table className="data-table"><thead><tr><th>批号</th><th>完工时间</th><th>成本中心</th><th className="text-right">合格数量</th><th className="text-right">合格率</th><th className="text-right">单位成本1</th><th className="text-right">单位成本2</th></tr></thead>
-              <tbody>{report.finished_batches.map((item) => <tr key={item.finished_batch_id}>
-                <td><button className="font-mono text-[var(--accent)] hover:underline" onClick={() => navigate(`/cost-data/${encodeURIComponent(item.finished_batch_id)}?period=${report.period}&tab=summary`)}>{item.lot_number}</button></td>
+            <div className="panel-head"><div><h2 className="section-title">产成品批次</h2><p className="meta mt-1">进入批次可查看完整成本 DAG</p></div><Badge>{report.finished_batches.length + (report.comparison?.baseline_finished_batches.length ?? 0)} 个</Badge></div>
+            <div className="table-scroll"><table className="data-table"><thead><tr>{report.comparison ? <th>期间</th> : null}<th>批号</th><th>完工时间</th><th>成本中心</th><th className="text-right">合格数量</th><th className="text-right">合格率</th><th className="text-right">单位成本1</th><th className="text-right">单位成本2</th></tr></thead>
+              <tbody>{[
+                ...(report.comparison?.baseline_finished_batches ?? []),
+                ...report.finished_batches,
+              ].map((item) => <tr key={item.finished_batch_id}>
+                {report.comparison ? <td className="font-mono">{item.period}</td> : null}
+                <td><button className="font-mono text-[var(--accent)] hover:underline" onClick={() => navigate(`/cost-data/${encodeURIComponent(item.finished_batch_id)}?period=${item.period}&tab=summary`)}>{item.lot_number}</button></td>
                 <td className="meta">{formatDate(item.completion_time)}</td>
                 <td>{item.cost_center_name ?? item.cost_center_code ?? '—'}</td>
                 <td className="num text-right">{formatDecimal(item.qualified_quantity, 4)}</td>
@@ -276,6 +309,42 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
 
 function ReportMetric({ label, value }: { label: string; value: string }) {
   return <article className="min-h-28 border-r border-[var(--border-soft)] p-4 last:border-r-0"><p className="label">{label}</p><p className="num mt-4 text-2xl">{value}</p></article>
+}
+
+function ComparisonMetrics({ metrics, baselinePeriod, currentPeriod }: { metrics: ComparisonMetric[]; baselinePeriod: string; currentPeriod: string }) {
+  return <section className="grid grid-cols-2 border-b border-[var(--border-soft)] xl:grid-cols-4 mobile-stack" aria-label={`${baselinePeriod} 与 ${currentPeriod} 核心指标对比`}>
+    {metrics.map((metric) => {
+      const delta = Number(metric.delta)
+      const increased = delta > 0
+      const decreased = delta < 0
+      return <article key={metric.metric_id} className="min-h-36 border-r border-[var(--border-soft)] p-4 last:border-r-0">
+        <p className="label">{metric.label}</p>
+        <div className="mt-3 flex items-end justify-between gap-3"><p className="num text-2xl">{formatComparisonValue(metric.current_value, metric.unit)}</p><span className={`flex items-center gap-1 text-xs font-semibold ${increased || decreased ? 'text-[var(--accent)]' : 'text-[var(--muted)]'}`}>{increased ? <ArrowUpRight className="h-3.5 w-3.5" /> : decreased ? <ArrowDownRight className="h-3.5 w-3.5" /> : null}{formatSigned(metric.delta, metric.unit)}</span></div>
+        <p className="meta mt-3">基准 {baselinePeriod}：{formatComparisonValue(metric.baseline_value, metric.unit)}{metric.change_rate !== null ? ` · ${formatSigned(metric.change_rate, '%')}` : ''}</p>
+      </article>
+    })}
+  </section>
+}
+
+function ComparisonTable({ metrics, baselinePeriod, currentPeriod }: { metrics: ComparisonMetric[]; baselinePeriod: string; currentPeriod: string }) {
+  return <section className="border-b border-[var(--border-soft)]">
+    <div className="panel-head"><div><h2 className="section-title">制造成本差额明细</h2><p className="meta mt-1">差额 = 目标期 − 基准期；表格是图表的精确数值补充</p></div></div>
+    <div className="table-scroll"><table className="data-table"><thead><tr><th>制造成本组</th><th className="text-right">{baselinePeriod}</th><th className="text-right">{currentPeriod}</th><th className="text-right">差额</th><th className="text-right">变化率</th></tr></thead>
+      <tbody>{metrics.map((metric) => <tr key={metric.metric_id}><td className="font-semibold">{metric.label}</td><td className="num text-right">{formatComparisonValue(metric.baseline_value, metric.unit)}</td><td className="num text-right">{formatComparisonValue(metric.current_value, metric.unit)}</td><td className="num text-right">{formatSigned(metric.delta, metric.unit)}</td><td className="num text-right">{metric.change_rate === null ? '基准为 0' : formatSigned(metric.change_rate, '%')}</td></tr>)}</tbody>
+    </table></div>
+  </section>
+}
+
+function formatComparisonValue(value: string, unit: string) {
+  const digits = unit === '%' ? 2 : unit.startsWith('元') ? 2 : 4
+  return `${formatDecimal(value, digits)} ${unit}`
+}
+
+function formatSigned(value: string, unit: string) {
+  const numeric = Number(value)
+  const prefix = numeric > 0 ? '+' : ''
+  const digits = unit === '%' || unit.startsWith('元') ? 2 : 4
+  return `${prefix}${formatDecimal(value, digits)} ${unit}`
 }
 
 function ConfirmDialog({ item, busy, onCancel, onConfirm }: { item: ArtifactSummary; busy: boolean; onCancel: () => void; onConfirm: () => void }) {

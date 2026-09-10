@@ -6,7 +6,7 @@ import type {
   VariableFixedCostView,
 } from './costData'
 
-export type CapabilityId = 'system_help' | 'cost_calculation'
+export type CapabilityId = 'system_help' | 'cost_calculation' | 'report_generation'
 export type RouteId = CapabilityId | 'blocked'
 export type RoutingMode = 'auto' | 'manual'
 export type RunOutcome = 'completed' | 'needs_clarification' | 'blocked' | 'failed'
@@ -27,8 +27,19 @@ export type AgentEvent = {
   finished_at?: string | null
 }
 
+export type ComparisonMetric = {
+  metric_id: string
+  label: string
+  unit: string
+  baseline_value: DecimalValue
+  current_value: DecimalValue
+  delta: DecimalValue
+  change_rate: DecimalValue | null
+}
+
 export type ReportJson = {
-  report_schema_version: '2.0'
+  report_schema_version: '3.0'
+  report_style: 'presentation' | 'period_comparison'
   rule_version: string
   prompt_version: string
   code_version: string
@@ -42,6 +53,23 @@ export type ReportJson = {
     product_family: string | null
   }
   period: string
+  comparison: {
+    baseline_period: string
+    current_period: string
+    baseline_batch_summary: {
+      batch_count: number
+      completed_quantity: DecimalValue
+      qualified_quantity: DecimalValue
+      defective_quantity: DecimalValue
+      quality_rate: DecimalValue
+    }
+    baseline_manufacturing_view: ManufacturingCostView
+    baseline_material_labor_overhead_view: MaterialLaborOverheadView
+    baseline_variable_fixed_view: VariableFixedCostView
+    baseline_finished_batches: FinishedBatchCostSummary[]
+    headline_metrics: ComparisonMetric[]
+    manufacturing_groups: ComparisonMetric[]
+  } | null
   date_range?: { start_date: string; end_date: string } | null
   batch_summary: {
     batch_count: number

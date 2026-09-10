@@ -74,7 +74,7 @@ const runtimePrefix = '/api/v2/conversations'
 export const createConversation = (title = '新建成本分析') => apiRequest<Conversation>('/api/conversations', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ title, routing_mode: 'auto', enabled_capabilities: ['system_help', 'cost_calculation'] }),
+  body: JSON.stringify({ title, routing_mode: 'auto', enabled_capabilities: ['system_help', 'cost_calculation', 'report_generation'] }),
 })
 
 export const listConversations = () => apiRequest<ConversationSummary[]>('/api/conversations')
@@ -108,7 +108,7 @@ export function createConversationRun(
       message_id: options.messageId,
       content,
       routing_mode: 'auto',
-      enabled_capabilities: ['system_help', 'cost_calculation'],
+      enabled_capabilities: ['system_help', 'cost_calculation', 'report_generation'],
       reply_to_clarification_id: options.replyToClarificationId,
     }),
   })

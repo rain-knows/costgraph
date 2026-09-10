@@ -22,7 +22,7 @@ const artifact = {
   period: '2026-06',
   report_sha256: 'hash',
   data_snapshot_id: 'snapshot',
-  report_schema_version: '2.0',
+  report_schema_version: '3.0',
   rule_version: '1',
   prompt_version: '1',
   code_version: '1',
@@ -30,7 +30,7 @@ const artifact = {
   deleted_at: '2026-07-02T00:00:00Z',
 }
 
-describe('ReportsPage v2', () => {
+describe('ReportsPage v3', () => {
   beforeEach(() => {
     listArtifactsMock.mockResolvedValue({ items: [artifact], total: 1, limit: 20, offset: 0 })
     restoreArtifactMock.mockResolvedValue({ ...artifact, deleted_at: null })
