@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, FileBarChart2, GitBranch, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { FileBarChart2, GitBranch, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { getArtifact, listArtifacts, restoreArtifact, trashArtifact, type ArtifactDetail, type ArtifactSummary } from '../api/artifacts'
 import type { AppOutletContext } from '../components/AppShell'
@@ -99,7 +99,7 @@ function ReportList() {
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   return <div>
-    <PageHeader eyebrow="报表中心 / 结构化产出" title="成本报表中心" description="管理由成本 Agent 生成的批次卷积 Artifact 2.0。" />
+    <PageHeader title="成本报表中心" />
     <section className="flex min-h-14 flex-wrap items-center gap-2 border-b border-[var(--border-soft)] px-4 py-2">
       <Segmented value={scope} onChange={(value) => update('scope', value === 'active' ? undefined : value)} label="报表范围" options={[{ value: 'active', label: '当前报表' }, { value: 'trashed', label: '回收站' }]} />
       <label className="flex h-10 min-w-56 flex-1 items-center gap-2 bg-[var(--surface)] px-3 md:max-w-sm">
@@ -207,11 +207,8 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
 
   return <div>
     <PageHeader
-      eyebrow={`报表中心 / ${artifactId}`}
       title={report ? `${report.part.part_description} 成本报表` : '成本报表'}
-      description={report ? `${report.part.part_number} · ${report.period} · 快照 ${report.data_snapshot_id.slice(0, 12)}` : '正在读取结构化 Artifact'}
       actions={<>
-        <Button variant="ghost" onClick={() => navigate(`/reports?period=${period}`)}><ArrowLeft className="h-4 w-4" />返回报表中心</Button>
         {artifact && !artifact.deleted_at ? <Button variant="danger" disabled={actionLoading} onClick={() => setConfirmOpen(true)}><Trash2 className="h-4 w-4" />移入回收站</Button> : null}
       </>}
     />

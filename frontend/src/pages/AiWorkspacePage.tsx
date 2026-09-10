@@ -159,8 +159,8 @@ export function AiWorkspacePage() {
   const liveClarification = liveResult?.clarification ?? null
 
   return <div>
-    <PageHeader eyebrow="AI 分析 / 受控执行" title="CostGraph AI 分析工作台" description="模型负责理解和解释；能力、数据范围、金额和公式由 Runtime 强制执行。" />
-    <div className="agent-workspace-grid grid min-h-[calc(100vh-178px)] grid-cols-[248px_minmax(420px,1fr)_320px] mobile-stack">
+    <PageHeader title="AI 分析工作台" />
+    <div className="agent-workspace-grid grid min-h-[calc(100vh-112px)] grid-cols-[248px_minmax(420px,1fr)_320px] mobile-stack">
       <aside className="agent-conversation-list border-r border-[var(--border-soft)] bg-[var(--surface)]">
         <div className="p-3"><Button variant="primary" className="w-full" disabled={creatingConversation} onClick={() => void newConversation()}><MessageSquarePlus className="h-4 w-4" />{creatingConversation ? '正在创建' : '新建会话'}</Button><label className="mt-3 flex h-10 items-center gap-2 bg-[var(--bg)] px-3"><Search className="h-4 w-4" /><span className="sr-only">搜索会话</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索会话" className="min-w-0 flex-1 bg-transparent" /></label></div>
         <nav className="border-t border-[var(--border-soft)]" aria-label="会话历史">{filtered.map((item) => <button key={item.conversation_id} className={cn('w-full border-b border-[var(--border-soft)] p-3 text-left hover:bg-[var(--bg)]', item.conversation_id === conversationId && 'bg-[var(--surface-warm)]')} onClick={() => navigate(`/ai/${encodeURIComponent(item.conversation_id)}?period=${period}`)}><span className="line-clamp-2 text-sm">{item.title}</span><span className="meta mt-2 block">{item.message_count} 条消息 · {formatTime(item.updated_at)}</span></button>)}</nav>

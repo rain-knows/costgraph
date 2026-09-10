@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Database, Factory, ShoppingCart } from 'lucide-react'
-import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
+import { Database, Factory, ShoppingCart } from 'lucide-react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
   getFinishedBatchCost,
   type CostTraceNode,
   type CostTraceRecord,
   type FinishedBatchCostDetail,
 } from '../api/costData'
-import type { AppOutletContext } from '../components/AppShell'
 import { CostTree } from '../components/CostTree'
 import { CostViewSummary } from '../components/CostViews'
-import { Badge, Button, PageHeader, RequestState, Segmented } from '../components/ui'
+import { Badge, PageHeader, RequestState, Segmented } from '../components/ui'
 import { formatDecimal, formatPreciseMoney } from '../lib/utils'
 
 const detailTabs = ['summary', 'trace', 'sources'] as const
@@ -24,11 +23,8 @@ const detailTabOptions: Array<{ value: DetailTab; label: string }> = [
 
 export function RecordDetailPage() {
   const { finishedBatchId = '' } = useParams()
-  const { period } = useOutletContext<AppOutletContext>()
   const [params, setParams] = useSearchParams()
-  const navigate = useNavigate()
   const tab = readTab(params.get('tab'))
-  const listView = params.get('view') ?? 'manufacturing'
   const [detail, setDetail] = useState<FinishedBatchCostDetail | null>(null)
   const [selectedEventId, setSelectedEventId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -57,17 +53,8 @@ export function RecordDetailPage() {
   }
 
   const title = detail?.part.part_description ?? '批次成本详情'
-  const description = detail
-    ? `${detail.part.part_number} · 批号 ${detail.lot_number} · ${formatDateTime(detail.completion_time)}`
-    : `正在读取批次 ${finishedBatchId}`
-
   return <div>
-    <PageHeader
-      eyebrow={`成本数据 / ${finishedBatchId}`}
-      title={title}
-      description={description}
-      actions={<Button variant="ghost" onClick={() => navigate(`/cost-data?period=${period}&view=${encodeURIComponent(listView)}`)}><ArrowLeft className="h-4 w-4" />返回批次列表</Button>}
-    />
+    <PageHeader title={title} />
     <RequestState loading={loading} error={error} empty={!detail} onRetry={() => setReload((value) => value + 1)}>
       {detail ? <>
         <section className="grid grid-cols-5 border-b border-[var(--border-soft)] mobile-stack" aria-label="批次成本指标">

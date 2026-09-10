@@ -82,11 +82,7 @@ export function CostDataPage() {
 
   const pageCount = Math.max(1, Math.ceil((result?.total ?? 0) / pageSize))
   return <div>
-    <PageHeader
-      eyebrow="成本数据 / 产成品批次"
-      title="批次成本数据库"
-      description="按完工批次查看六类制造成本、料工费与变动/固定成本；金额和比例均来自已发布的服务端计算。"
-    />
+    <PageHeader title="批次成本数据库" />
     <section className="flex min-h-14 flex-wrap items-center gap-2 border-b border-[var(--border-soft)] px-4 py-2">
       <label className="flex h-10 min-w-64 flex-1 items-center gap-2 bg-[var(--surface)] px-3 md:max-w-sm">
         <Search className="h-4 w-4" />

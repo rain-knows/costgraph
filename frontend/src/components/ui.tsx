@@ -61,14 +61,10 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
   )
 }
 
-export function PageHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: ReactNode }) {
+export function PageHeader({ title, actions }: { title: string; actions?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-6 border-b border-[var(--border-soft)] px-6 py-6 page-pad" data-od-id="page-header">
-      <div className="min-w-0 max-w-3xl">
-        <p className="label mb-2">{eyebrow}</p>
-        <h1 className="page-title text-balance">{title}</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--fg-2)]">{description}</p>
-      </div>
+    <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-[var(--border-soft)] px-6 py-2 page-pad" data-od-id="page-header">
+      <h1 className="page-title min-w-0 text-balance">{title}</h1>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
   )

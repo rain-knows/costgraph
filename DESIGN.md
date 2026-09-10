@@ -46,6 +46,13 @@ floating section card.
 - Favor tables, split panes, compact toolbars, inline filters, disclosure rows,
   and persistent status regions. Do not nest cards or use cards as page-section
   wrappers.
+- Keep route context in the global 48 px toolbar. The period selector is followed
+  by a single-line semantic breadcrumb whose parent items navigate to real routes
+  while preserving the active period; the current item is plain text with
+  `aria-current="page"`. Below the small breakpoint, the breadcrumb occupies a
+  second toolbar row so the current context remains visible. Page headers contain
+  only the page title and necessary actions, without category eyebrows or
+  explanatory introductions.
 - Use Lucide icons for recognizable actions. Icon-only controls require an
   accessible name and tooltip; text buttons are reserved for clear commands.
 

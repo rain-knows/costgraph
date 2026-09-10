@@ -69,9 +69,7 @@ export function DashboardPage() {
 
   return <div>
     <PageHeader
-      eyebrow="成本总览 / 已发布批次"
       title={`${period} 成本运行全貌`}
-      description="制造成本、制造后费用与质量数据均来自服务端发布快照；跨零件不计算平均单位成本。"
       actions={<>
         <Button variant="ghost" onClick={() => setReload((value) => value + 1)}><RefreshCw className="h-4 w-4" />刷新</Button>
         <Button variant="primary" onClick={() => navigate(`/ai?period=${period}`)}>发起 AI 分析<ArrowRight className="h-4 w-4" /></Button>

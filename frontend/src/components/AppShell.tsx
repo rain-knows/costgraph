@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { HealthStatus } from '../api/agent'
 import { apiRequest } from '../api/http'
 import { cn } from '../lib/utils'
+import { Breadcrumbs } from './Breadcrumbs'
 import { IconButton } from './ui'
 
 const nav = [
@@ -72,9 +73,10 @@ export function AppShell() {
     <Sidebar period={period} />
     {mobileOpen ? <><button className="fixed inset-0 z-30 bg-black/40" aria-label="关闭导航遮罩" onClick={() => setMobileOpen(false)} /><Sidebar period={period} mobile onClose={() => setMobileOpen(false)} /></> : null}
     <div className="workspace-main ml-60 min-h-screen">
-      <header className="sticky top-0 z-30 flex h-12 items-center border-b border-[var(--border-soft)] bg-[var(--bg)]" aria-label="全局工具栏">
+      <header className="app-toolbar sticky top-0 z-30 flex min-h-12 items-center border-b border-[var(--border-soft)] bg-[var(--bg)]" aria-label="全局工具栏">
         <IconButton label="打开导航" className="min-[1056px]:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></IconButton>
-        <label className="flex h-full items-center gap-2 border-r border-[var(--border-soft)] px-3"><span className="label">期间</span><input aria-label="成本期间" type="month" value={period} onChange={(event) => changePeriod(event.target.value)} className="bg-transparent font-mono text-sm" /></label>
+        <label className="flex h-full shrink-0 items-center gap-2 border-r border-[var(--border-soft)] px-3"><span className="label mobile-hide">期间</span><input aria-label="成本期间" type="month" value={period} onChange={(event) => changePeriod(event.target.value)} className="w-[7.5rem] bg-transparent font-mono text-sm" /></label>
+        <Breadcrumbs pathname={location.pathname} period={period} />
         <div className="ml-auto flex h-full items-center gap-2 border-l border-[var(--border-soft)] px-3 text-xs" aria-label={runtimeReady ? 'Runtime 就绪' : health ? 'Runtime 未就绪' : 'Runtime 离线'} title={runtimeReady ? 'Runtime 就绪' : health ? 'Runtime 未就绪' : 'Runtime 离线'}><Server className="h-4 w-4" /><span className={cn('h-2 w-2 rounded-full', runtimeReady ? 'bg-[var(--success)]' : 'bg-[var(--danger)]')} /><span className="mobile-hide">{runtimeReady ? 'Runtime 就绪' : health ? 'Runtime 未就绪' : 'Runtime 离线'}</span></div>
         <IconButton label={theme === 'light' ? '切换深色主题' : '切换浅色主题'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</IconButton>
       </header>
