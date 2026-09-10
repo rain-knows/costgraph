@@ -1,9 +1,42 @@
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
 
 from app.services import llm_service
+
+
+def test_cost_analysis_serializes_deterministic_decimal_facts(monkeypatch) -> None:
+    captured_messages = None
+
+    def fake_chat_completion(_node, _purpose, messages, **_kwargs):
+        nonlocal captured_messages
+        captured_messages = messages
+        return {"_content": "单位成本分析。", "status": "success"}
+
+    monkeypatch.setattr(llm_service, "_chat_completion", fake_chat_completion)
+    calculation_result = {
+        "batch_summary": {"completed_quantity": Decimal("1000.0000")},
+        "manufacturing_view": {"total": {"amount": Decimal("50000.00")}},
+        "material_labor_overhead_view": {"material": {"amount": Decimal("20000.00")}},
+        "variable_fixed_view": {"total_cost_2": {"unit_cost": Decimal("53.50")}},
+    }
+
+    result = llm_service.generate_cost_analysis_with_llm(
+        {
+            "part_number": "FG-001",
+            "part_description": "测试产成品",
+        },
+        "2026-06",
+        calculation_result,
+    )
+
+    assert result["analysis_text"] == "单位成本分析。"
+    assert captured_messages is not None
+    facts = json.loads(captured_messages[1]["content"])
+    assert facts["batch_summary"]["completed_quantity"] == "1000.0000"
+    assert facts["variable_fixed_view"]["total_cost_2"]["unit_cost"] == "53.50"
 
 
 def _install_transport(monkeypatch, handler) -> None:

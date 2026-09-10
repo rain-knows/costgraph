@@ -170,8 +170,6 @@ def build_report_json(
                 state.get("part") or result["part"],
                 state["period"],
                 result,
-                None,
-                state.get("date_range"),
                 status_for_context(state, "build_report_json"),
             ),
         )

@@ -622,7 +622,10 @@ def generate_cost_analysis_with_llm(
                 "长度控制在 100 字以内。"
             ),
         },
-        {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
+        {
+            "role": "user",
+            "content": json.dumps(facts, ensure_ascii=False, default=str),
+        },
     ]
     if status_bar:
         messages.append({"role": "user", "content": render_status_context(status_bar)})

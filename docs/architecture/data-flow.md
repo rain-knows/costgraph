@@ -39,7 +39,7 @@ HTTP -> conversation context -> capability/data-scope gate
   -> atomic Run/Turn/Message/Audit/Artifact finalization
 ```
 
-缺少唯一产成品零件或期间时在读取成本输入前停止，不返回金额，也不创建 Artifact。合法完成的成本报告以租户+Run/message 幂等生成 Artifact；软删除 Artifact 不修改原报告、哈希或运行记录。
+缺少唯一产成品零件或期间时在读取成本输入前停止，不返回金额，也不创建 Artifact。合法完成的成本报告以租户+Run/message 幂等生成 Artifact；软删除 Artifact 不修改原报告、哈希或运行记录。传给模型的确定性 Decimal 事实保持原精度字符串表示，批次 `completion_time` 由报告 Pydantic 契约从内部 `datetime` 统一序列化为公开 JSON 时间字符串。
 
 ## Durable 控制流
 

@@ -52,7 +52,7 @@ load conversation context -> policy gate -> select route
   -> build report -> final answer -> atomic artifact finalization
 ```
 
-缺少唯一产成品零件或 `period` 时，图在读取成本输入前返回 `needs_clarification`，且不创建 Artifact。期间按最终批次的 `completion_time` 归属；`system_help` 路由不会读取成本事实。
+缺少唯一产成品零件或 `period` 时，图在读取成本输入前返回 `needs_clarification`，且不创建 Artifact。期间按最终批次的 `completion_time` 归属；`system_help` 路由不会读取成本事实。报表分析 Provider 只接收零件、期间、确定性计算结果和状态栏，Decimal 事实按原精度序列化为字符串；报告模型接收成本批次的 `datetime` 并在公开 JSON 中输出时间字符串。
 
 ## 核心不变量
 

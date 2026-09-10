@@ -1,7 +1,8 @@
 import app.agent.tools as agent_tools
 from app.agent.graph import run_runtime, stream_runtime
 from app.agent.providers import DeepSeekProviderAdapter
-from app.agent.runtime_contracts import RuntimeRunRequest
+from app.agent.routes import cost_nodes
+from app.agent.runtime_contracts import HarnessCallOutcome, RuntimeRunRequest
 from app.agent.runtime_services import RuntimeServices
 from app.services import llm_service
 from app.services.llm_service import LLMUnavailableError
@@ -34,6 +35,66 @@ def test_runtime_calculates_finished_part_and_builds_v2_report(monkeypatch) -> N
     assert result["report_json"]["report_schema_version"] == "2.0"
     assert result["report_json"]["finished_batches"]
     assert "load_finished_batches" in [event["node"] for event in result["events"]]
+
+
+def test_report_node_uses_registered_analysis_provider_signature(monkeypatch) -> None:
+    class CapturingServices:
+        model_args = None
+
+        def ensure_run(self, _run_id: str) -> None:
+            pass
+
+        def invoke_model(self, operation: str, *, node: str, args: tuple):
+            assert operation == "generate_cost_analysis"
+            assert node == "build_report_json"
+            self.model_args = args
+            return HarnessCallOutcome(
+                call_id="analysis-call",
+                kind="model",
+                name=operation,
+                status="success",
+                value={
+                    "analysis_text": "契约回归测试。",
+                    "llm_call": {"status": "success"},
+                },
+            )
+
+        def invoke_tool(self, *_args, **_kwargs):
+            return HarnessCallOutcome(
+                call_id="report-call",
+                kind="tool",
+                name="build_report",
+                status="error",
+                error="stop after model contract assertion",
+            )
+
+    monkeypatch.setattr(cost_nodes, "build_lineage", lambda **_kwargs: {})
+    monkeypatch.setattr(cost_nodes, "update_status_bar", lambda *_args: {})
+    services = CapturingServices()
+    part = {
+        "part_id": "P-FG-001",
+        "part_number": "FG-001",
+        "part_description": "测试产成品",
+        "part_type": "finished_good",
+    }
+    calculation_result = {"part": part}
+
+    cost_nodes.build_report_json(
+        {
+            "run_id": "run-contract-test",
+            "period": "2026-06",
+            "part": part,
+            "calculation_result": calculation_result,
+            "execution_context": {},
+            "status_bar": {"phase": "build_report_json"},
+        },
+        services,
+    )
+
+    assert services.model_args is not None
+    assert len(services.model_args) == 4
+    assert services.model_args[:3] == (part, "2026-06", calculation_result)
+    assert services.model_args[3]["current_step"] == "build_report_json"
 
 
 def test_missing_slots_clarify_before_cost_read(monkeypatch) -> None:

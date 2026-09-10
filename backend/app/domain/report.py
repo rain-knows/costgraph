@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -86,7 +87,7 @@ class FinishedBatchCost(BaseModel):
     event_id: str
     part: ReportPart
     period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
-    completion_time: str
+    completion_time: datetime
     cost_center_code: str | None = None
     cost_center_name: str | None = None
     work_order_number: str | None = None
