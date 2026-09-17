@@ -10,7 +10,7 @@ import {
 } from '../api/costData'
 import type { AppOutletContext } from '../components/AppShell'
 import { IconButton, PageHeader, RequestState, Segmented } from '../components/ui'
-import { cn, formatDecimal } from '../lib/utils'
+import { cn, formatDecimal, formatQuantity } from '../lib/utils'
 
 const pageSize = 20
 const views = ['manufacturing', 'material-labor-expense', 'variable-fixed'] as const
@@ -293,10 +293,6 @@ function readPage(value: string | null) {
 function formatDateTime(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(date)
-}
-
-function formatQuantity(value: string) {
-  return formatDecimal(value, 4)
 }
 
 function formatHours(value: string) {

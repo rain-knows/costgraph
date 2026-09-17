@@ -29,6 +29,10 @@ describe('CostDataPage v2', () => {
     expect(screen.getByText('六类制造成本')).toBeInTheDocument()
     expect(screen.getAllByText(/直接材料/).length).toBeGreaterThan(0)
     expect(screen.getByText('制造单位成本')).toBeInTheDocument()
+    const batchRow = screen.getByRole('row', { name: /打开批次 LOT-FG-001/ })
+    expect(batchRow).toHaveTextContent('950 件')
+    expect(batchRow).toHaveTextContent('50 件')
+    expect(batchRow).not.toHaveTextContent('.0000')
     expect(listFinishedBatchCostsMock).toHaveBeenCalledWith(expect.objectContaining({
       period: '2026-06',
       sort: 'completion_time_desc',
