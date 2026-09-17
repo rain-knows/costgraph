@@ -30,3 +30,4 @@ runtime*.json
 *.sqlite3
 .DS_Store
 Thumbs.db
+outputs/

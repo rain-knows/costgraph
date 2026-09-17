@@ -10,7 +10,7 @@ import {
 import type { AppOutletContext } from '../components/AppShell'
 import { axis, EChart, tooltip } from '../components/Charts'
 import { Badge, Button, PageHeader, RequestState } from '../components/ui'
-import { formatDecimal, formatPreciseMoney } from '../lib/utils'
+import { formatDecimal, formatPreciseMoney, formatQuantity } from '../lib/utils'
 
 export function DashboardPage() {
   const { period } = useOutletContext<AppOutletContext>()
@@ -62,8 +62,8 @@ export function DashboardPage() {
     { label: '制造成本', value: formatPreciseMoney(overview.manufacturing_cost, 0), note: `${overview.batch_count} 个完工批次` },
     { label: '制造后费用', value: formatPreciseMoney(overview.post_manufacturing_cost, 0), note: '售后、运输与仓储' },
     { label: '含制造后总成本', value: formatPreciseMoney(overview.total_cost, 0), note: `${overview.part_count} 个产成品零件` },
-    { label: '完工数量', value: formatDecimal(overview.completed_quantity, 4), note: `合格 ${formatDecimal(overview.qualified_quantity, 4)}` },
-    { label: '不良品数量', value: formatDecimal(overview.defective_quantity, 4), note: '成本由合格品承接' },
+    { label: '完工数量', value: formatQuantity(overview.completed_quantity), note: `合格 ${formatQuantity(overview.qualified_quantity)}` },
+    { label: '不良品数量', value: formatQuantity(overview.defective_quantity), note: '成本由合格品承接' },
     { label: '合格率', value: formatRate(overview.quality_rate), note: `${overview.period} · 已发布数据` },
   ] : []
 
