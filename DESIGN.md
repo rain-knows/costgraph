@@ -46,8 +46,10 @@ floating section card.
 - Favor tables, split panes, compact toolbars, inline filters, disclosure rows,
   and persistent status regions. Do not nest cards or use cards as page-section
   wrappers.
-- Keep route context in the global 48 px toolbar. The period selector is followed
-  by a single-line semantic breadcrumb whose parent items navigate to real routes
+- Keep route context in the global 48 px toolbar. The period selector combines
+  previous/next month shortcuts with a year-scoped 12-month grid and does not
+  accept free-form year input. It is followed by a single-line semantic
+  breadcrumb whose parent items navigate to real routes
   while preserving the active period; the current item is plain text with
   `aria-current="page"`. Below the small breakpoint, the breadcrumb occupies a
   second toolbar row so the current context remains visible. Page headers contain
