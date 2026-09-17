@@ -139,14 +139,14 @@ def test_report_node_uses_registered_analysis_provider_signature(monkeypatch) ->
 def test_missing_slots_clarify_before_cost_read(monkeypatch) -> None:
     fixture = CostFixtureRepository()
     calls = 0
-    original = fixture.list_finished_batch_sources
+    original = fixture.list_part_period_projections
 
     def tracked(*args, **kwargs):
         nonlocal calls
         calls += 1
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(fixture, "list_finished_batch_sources", tracked)
+    monkeypatch.setattr(fixture, "list_part_period_projections", tracked)
     monkeypatch.setattr(agent_tools, "cost_repository", fixture)
     result = run_runtime(
         _request("查一下成本"), runtime_services=build_fixture_runtime_services()
@@ -215,14 +215,14 @@ def test_production_provider_without_key_fails_before_cost_read(monkeypatch) -> 
     fixture = CostFixtureRepository()
     cost_reads = 0
 
-    original_load = fixture.list_finished_batch_sources
+    original_load = fixture.list_part_period_projections
 
     def tracked_load(*args, **kwargs):
         nonlocal cost_reads
         cost_reads += 1
         return original_load(*args, **kwargs)
 
-    monkeypatch.setattr(fixture, "list_finished_batch_sources", tracked_load)
+    monkeypatch.setattr(fixture, "list_part_period_projections", tracked_load)
     monkeypatch.setattr(agent_tools, "cost_repository", fixture)
     monkeypatch.setattr(
         llm_service,

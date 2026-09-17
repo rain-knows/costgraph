@@ -21,6 +21,7 @@ def domain_status_code(code: str) -> int:
         "artifact_persistence_failed",
         "runtime_unavailable",
         "database_unavailable",
+        "cost_projection_unavailable",
     }:
         return 503
     return 409

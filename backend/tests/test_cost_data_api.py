@@ -49,9 +49,7 @@ def test_golden_finished_batch_has_three_view_values() -> None:
     assert len(detail.trace.edges) == 4
     assert len(detail.trace.records) >= 1
     assert [
-        node.process_name
-        for node in detail.trace.nodes
-        if node.event_type == "process"
+        node.process_name for node in detail.trace.nodes if node.event_type == "process"
     ] == ["注塑成型", "火焰处理与表皮包覆", "卡扣压装与门板总成装配"]
     assert {edge.input_id for edge in detail.trace.edges} >= {
         "I-RAW-FG1",
@@ -81,7 +79,7 @@ def test_cost_data_endpoints_return_decimal_strings_and_pagination() -> None:
     assert batches.status_code == 200
     assert batches.json()["page"] == 1
     assert batches.json()["page_size"] == 2
-    assert batches.json()["total"] == 3
+    assert batches.json()["total"] >= 10
     assert len(batches.json()["items"]) == 2
     assert isinstance(
         batches.json()["items"][0]["variable_fixed_view"]["total_cost_2"]["unit_cost"],

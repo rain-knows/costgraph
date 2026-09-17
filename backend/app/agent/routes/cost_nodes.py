@@ -74,11 +74,12 @@ def load_finished_batches(
     services = _runtime_services(state, runtime_services)
     period = state["period"]
     comparison_period = state.get("comparison_period", "")
+    part_id = (state.get("part") or {}).get("part_id", "")
     try:
         batches = require_call_value(
             services.invoke_tool(
                 "load_finished_batches",
-                {"period": period},
+                {"period": period, "part_id": part_id},
                 state["execution_context"],
                 node="load_finished_batches",
             )
@@ -87,7 +88,7 @@ def load_finished_batches(
             require_call_value(
                 services.invoke_tool(
                     "load_finished_batches",
-                    {"period": comparison_period},
+                    {"period": comparison_period, "part_id": part_id},
                     state["execution_context"],
                     node="load_finished_batches",
                 )
@@ -105,16 +106,6 @@ def load_finished_batches(
             summary,
             started_at,
         )
-    part_id = (state.get("part") or {}).get("part_id")
-    if part_id:
-        batches = [
-            item for item in batches if item.get("part", {}).get("part_id") == part_id
-        ]
-        comparison_batches = [
-            item
-            for item in comparison_batches
-            if item.get("part", {}).get("part_id") == part_id
-        ]
     if not batches:
         summary = f"缺少 {part_id or '指定零件'} {period} 的已发布产成品批次。"
         return _with_event(

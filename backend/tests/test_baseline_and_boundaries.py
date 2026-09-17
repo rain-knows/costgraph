@@ -37,6 +37,7 @@ def test_single_explicit_baseline_matches_runtime_table_set() -> None:
         "cost_data.cost_events",
         "cost_data.cost_event_inputs",
         "cost_data.cost_records",
+        "cost_data.finished_batch_cost_projections",
     }
 
 

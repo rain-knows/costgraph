@@ -10,7 +10,8 @@
 | --- | --- |
 | `batch_id` | `UUID` 主键 |
 | `tenant_id`、`source_system` | 租户与来源系统 |
-| `source_file`、`source_snapshot_hash` | 无凭据的来源定位与 SHA-256；租户+来源+哈希唯一 |
+| `source_file`、`source_snapshot_hash` | 无凭据的来源定位与 SHA-256 |
+| `calculation_rule_version` | 发布时生成成本投影所用规则版本；租户+来源+哈希+规则版本唯一 |
 | `status` | `created/validating/validated/published/superseded/failed` |
 | `total_rows`、`valid_rows`、`error_rows` | 非负计数，合法+错误不超过总数 |
 | `error_summary` | 仅用于错误码聚合的 JSONB |
@@ -84,6 +85,10 @@
 ### `data_load_errors`
 
 `error_id` 为自增主键；`tenant_id + batch_id` 指向同租户导入批次；`source_table/source_record_id` 定位四类来源记录；`error_code/error_message/raw_payload/created_at` 保存稳定错误和追溯信息。
+
+### `finished_batch_cost_projections`
+
+服务端在发布事务中从四张成本事实表确定性生成的不可变读模型，不属于导入输入。`tenant_id + event_id` 为主键，`batch_id` 绑定精确快照，`finished_batch_id` 同租户唯一；`part_id/period/completion_time/cost_center_code/search_text/total_unit_cost` 支持权限过滤、搜索、排序和分页。数量、制造成本、制造后成本和总成本支持总览聚合；`summary_json/trace_json` 保存经当前 Pydantic 契约校验的批次摘要与追溯图，`rule_version` 必须等于导入批次规则版本。投影可由事实快照和规则完整重建，不能反向修改成本事实。
 
 ## `agent_runtime`
 

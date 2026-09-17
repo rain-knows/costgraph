@@ -257,6 +257,99 @@ class CostRecord(Base):
     )
 
 
+class FinishedBatchCostProjection(Base):
+    __tablename__ = "finished_batch_cost_projections"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "finished_batch_id",
+            name="uq_finished_cost_projection_batch",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "event_id"],
+            [
+                f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.event_id",
+            ],
+            name="fk_finished_cost_projection_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "part_id"],
+            [f"{COST_SCHEMA}.parts.tenant_id", f"{COST_SCHEMA}.parts.part_id"],
+            name="fk_finished_cost_projection_part",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "batch_id"],
+            [
+                f"{COST_SCHEMA}.data_load_batches.tenant_id",
+                f"{COST_SCHEMA}.data_load_batches.batch_id",
+            ],
+            name="fk_finished_cost_projection_batch",
+        ),
+        CheckConstraint(
+            "qualified_quantity >= 0 and defective_quantity >= 0 and "
+            "completed_quantity > 0",
+            name="ck_finished_cost_projection_quantities",
+        ),
+        CheckConstraint(
+            "manufacturing_cost >= 0 and post_manufacturing_cost >= 0 and "
+            "total_cost >= 0 and total_unit_cost >= 0",
+            name="ck_finished_cost_projection_costs",
+        ),
+        Index(
+            "ix_finished_cost_projection_completion",
+            "tenant_id",
+            "batch_id",
+            "period",
+            "completion_time",
+            "event_id",
+        ),
+        Index(
+            "ix_finished_cost_projection_unit_cost",
+            "tenant_id",
+            "batch_id",
+            "period",
+            "total_unit_cost",
+            "event_id",
+        ),
+        Index(
+            "ix_finished_cost_projection_part_period",
+            "tenant_id",
+            "batch_id",
+            "part_id",
+            "period",
+        ),
+        {"schema": COST_SCHEMA},
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    finished_batch_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    part_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
+    completion_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    cost_center_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    search_text: Mapped[str] = mapped_column(Text, nullable=False)
+    qualified_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    defective_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    completed_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    manufacturing_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    post_manufacturing_cost: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False
+    )
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    total_unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    summary_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    trace_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class DataLoadBatch(Base):
     __tablename__ = "data_load_batches"
     __table_args__ = (
@@ -264,6 +357,7 @@ class DataLoadBatch(Base):
             "tenant_id",
             "source_system",
             "source_snapshot_hash",
+            "calculation_rule_version",
             name="uq_data_load_batches_snapshot",
         ),
         UniqueConstraint(
@@ -298,6 +392,7 @@ class DataLoadBatch(Base):
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     source_file: Mapped[str | None] = mapped_column(String(500))
     source_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    calculation_rule_version: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     valid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

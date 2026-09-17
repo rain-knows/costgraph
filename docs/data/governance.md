@@ -10,7 +10,7 @@ source records -> normalized snapshot hash -> validating batch
   -> read services use only the current published snapshot
 ```
 
-`data_load_batches.status` 只允许 `created`、`validating`、`validated`、`published`、`superseded`、`failed`。数据库部分唯一索引保证每个租户最多一个 `published` 批次；发布新批次与替换旧批次在同一事务完成。相同租户、来源系统和快照哈希幂等复用，不重复导入。
+`data_load_batches.status` 只允许 `created`、`validating`、`validated`、`published`、`superseded`、`failed`。数据库部分唯一索引保证每个租户最多一个 `published` 批次；事实写入、确定性成本投影生成、发布新批次与替换旧批次在同一事务完成。相同租户、来源系统、快照哈希和计算规则版本幂等复用；规则版本变化必须重新发布投影。
 
 ## 数据质量
 
@@ -28,7 +28,7 @@ source records -> normalized snapshot hash -> validating batch
 
 应用校验由 `backend/app/services/cost_data_import_service.py` 执行，数据库约束作为最终门禁。
 
-仓库只保留 `parts/cost_events/cost_event_inputs/cost_records` 四份规范导入样例。当前汽车装饰件样例的黄金批次必须包含 5 个事件节点、4 条投入边和 3 道连续生产工序；导入测试同时校验行业语义、工序顺序与关系完整性，旧版扁平产品/产量/工序费用样例不再保留。
+仓库只保留 `parts/cost_events/cost_event_inputs/cost_records` 四份规范导入样例。当前汽车装饰件样例覆盖 100 个产成品 SKU 和 `2025-01` 至 `2026-12` 连续 24 个月，每月最少 10 个产成品批次；每个 SKU 至少在两个年度的同一自然月出现，并在追溯链中复用多种公共部件定义。`backend/scripts/generate_sample_cost_data.py` 负责确定性重建该数据集。原有黄金批次必须继续包含 5 个事件节点、4 条投入边和 3 道连续生产工序；导入测试同时校验规模、可比性、公共部件复用、行业语义、工序顺序与关系完整性，旧版扁平产品/产量/工序费用样例不再保留。
 
 ## 隔离与追溯
 

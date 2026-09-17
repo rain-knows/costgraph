@@ -4,7 +4,7 @@
 
 `ToolSpec` 是 Harness 的内部注册契约，包含工具 ID、描述、Draft 2020-12 输入/输出 Schema、只读/确定性/幂等属性、所需能力、数据范围、owner、风险、启用状态、timeout、retry policy、版本和 Schema 版本。
 
-注册时校验 Schema 本身；执行前校验输入，执行后校验输出。`execution_context` 只由 Runtime 注入。当前工具只读且幂等：成本事实查询工具要求 `published_cost_data`，按产成品零件和期间读取已发布的事件图；周期对比会对基准期与目标期分别调用同一读取工具。确定性卷积与 report schema `3.0` 构建工具不额外读取事实，但仍要求 `cost_calculation` 能力。
+注册时校验 Schema 本身；执行前校验输入，执行后校验输出。`execution_context` 只由 Runtime 注入。当前工具只读且幂等：成本查询工具要求 `published_cost_data`，`load_finished_batches` 必须同时接收产成品 `part_id` 与期间并读取对应规则版本的已发布成本投影；周期对比会对基准期与目标期分别调用同一工具。批次聚合与 report schema `3.0` 构建工具不额外读取事实，但仍要求 `cost_calculation` 能力。
 
 Repository 的暂时性基础设施失败可重试；授权、未知工具、参数、Schema 与确定性业务校验不可重试。新增通用工具前先评估当前注册表、LangGraph 和已安装库，不增加第二套工具协议。
 

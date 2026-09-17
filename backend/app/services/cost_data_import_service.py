@@ -22,9 +22,13 @@ from app.db.models import (
     CostRecord,
     DataLoadBatch,
     DataLoadError,
+    FinishedBatchCostProjection,
     Part,
 )
-from app.domain.cost import COST_CODE_GROUP
+from app.domain.cost import CALCULATION_RULE_VERSION, COST_CODE_GROUP, quantize_money
+from app.schemas.cost_data import FinishedBatchCostDetail
+from app.services.cost_calculation_service import calculate_finished_batch_cost
+from app.services.cost_source_builder import build_finished_batch_sources
 
 UPSERT_BATCH_SIZE = 500
 AMOUNT_INTEGER_DIGITS = 16
@@ -652,6 +656,7 @@ class CostDataImporter:
                     DataLoadBatch.tenant_id == tenant_id,
                     DataLoadBatch.source_system == source_system,
                     DataLoadBatch.source_snapshot_hash == snapshot_hash,
+                    DataLoadBatch.calculation_rule_version == CALCULATION_RULE_VERSION,
                 )
                 .order_by(desc(DataLoadBatch.created_at))
             )
@@ -672,6 +677,7 @@ class CostDataImporter:
                 source_system=source_system,
                 source_file=source_file,
                 source_snapshot_hash=snapshot_hash,
+                calculation_rule_version=CALCULATION_RULE_VERSION,
                 status="failed" if errors else "validated",
                 total_rows=total_rows,
                 valid_rows=total_rows - error_rows,
@@ -747,6 +753,19 @@ class CostDataImporter:
                     now,
                     "cost_record_id",
                     _record_values,
+                )
+                self._upsert_projections(
+                    session,
+                    _projection_values(
+                        parts=parts,
+                        events=events,
+                        inputs=inputs,
+                        records=records,
+                        tenant_id=tenant_id,
+                        source_system=source_system,
+                        batch_id=batch_id,
+                        now=now,
+                    ),
                 )
                 batch.status = "published"
             batch.finished_at = datetime.now(UTC)
@@ -868,6 +887,92 @@ class CostDataImporter:
         )
         for start in range(0, len(values), UPSERT_BATCH_SIZE):
             session.execute(statement, values[start : start + UPSERT_BATCH_SIZE])
+
+    @staticmethod
+    def _upsert_projections(session: Session, values: list[dict[str, Any]]) -> None:
+        if not values:
+            return
+        statement = pg_insert(FinishedBatchCostProjection).on_conflict_do_update(
+            index_elements=["tenant_id", "event_id"],
+            set_={
+                key: getattr(pg_insert(FinishedBatchCostProjection).excluded, key)
+                for key in values[0]
+                if key not in {"tenant_id", "event_id"}
+            },
+        )
+        for start in range(0, len(values), UPSERT_BATCH_SIZE):
+            session.execute(statement, values[start : start + UPSERT_BATCH_SIZE])
+
+
+def _projection_values(
+    *,
+    parts: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    inputs: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    tenant_id: str,
+    source_system: str,
+    batch_id: UUID,
+    now: datetime,
+) -> list[dict[str, Any]]:
+    sources = build_finished_batch_sources(
+        parts, events, inputs, records, source_system=source_system
+    )
+    values: list[dict[str, Any]] = []
+    for source in sources:
+        detail = FinishedBatchCostDetail.model_validate(
+            calculate_finished_batch_cost(source)
+        )
+        payload = detail.model_dump(mode="json")
+        trace = payload.pop("trace")
+        variable_fixed = detail.variable_fixed_view
+        post_manufacturing = quantize_money(
+            variable_fixed.after_sales_compensation.amount
+            + variable_fixed.transportation.amount
+            + variable_fixed.storage_fee.amount
+        )
+        search_text = " ".join(
+            str(value or "")
+            for value in (
+                detail.finished_batch_id,
+                detail.event_id,
+                detail.work_order_number,
+                detail.lot_number,
+                detail.cost_center_code,
+                detail.cost_center_name,
+                detail.process_code,
+                detail.process_name,
+                detail.part.part_id,
+                detail.part.part_number,
+                detail.part.part_description,
+                detail.part.product_family,
+            )
+        ).casefold()
+        values.append(
+            {
+                "tenant_id": tenant_id,
+                "event_id": detail.event_id,
+                "batch_id": batch_id,
+                "finished_batch_id": detail.finished_batch_id,
+                "part_id": detail.part.part_id,
+                "period": detail.period,
+                "completion_time": detail.completion_time,
+                "cost_center_code": detail.cost_center_code,
+                "search_text": search_text,
+                "qualified_quantity": detail.qualified_quantity,
+                "defective_quantity": detail.defective_quantity,
+                "completed_quantity": detail.completed_quantity,
+                "manufacturing_cost": detail.manufacturing_view.total.amount,
+                "post_manufacturing_cost": post_manufacturing,
+                "total_cost": variable_fixed.total_cost_2.amount,
+                "total_unit_cost": variable_fixed.total_cost_2.unit_cost,
+                "summary_json": payload,
+                "trace_json": trace,
+                "rule_version": CALCULATION_RULE_VERSION,
+                "created_at": now,
+            }
+        )
+    return values
 
 
 def _event_values(row: dict[str, Any]) -> dict[str, Any]:

@@ -4,8 +4,6 @@ from typing import Any, Protocol
 
 from app.domain.authorization import ExecutionContext
 
-CostSource = dict[str, Any]
-
 
 class CostRepository(Protocol):
     def list_parts(
@@ -16,24 +14,32 @@ class CostRepository(Protocol):
         self, part_text: str, execution_context: ExecutionContext
     ) -> list[dict[str, Any]]: ...
 
-    def load_cost_snapshot(
-        self, execution_context: ExecutionContext
-    ) -> CostSource | None: ...
-
-    def list_finished_batch_sources(
+    def overview_projection(
         self, period: str, execution_context: ExecutionContext
-    ) -> list[CostSource]: ...
+    ) -> dict[str, Any]: ...
 
-    def load_finished_batch_source(
+    def list_finished_batch_projections(
+        self,
+        *,
+        period: str,
+        query: str | None,
+        cost_center_code: str | None,
+        sort: str,
+        page: int,
+        page_size: int,
+        execution_context: ExecutionContext,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
+    def load_finished_batch_projection(
         self, finished_batch_id: str, execution_context: ExecutionContext
-    ) -> CostSource | None: ...
+    ) -> dict[str, Any] | None: ...
 
-    def list_part_period_sources(
+    def list_part_period_projections(
         self,
         part_id: str,
         period: str,
         execution_context: ExecutionContext,
-    ) -> list[CostSource]: ...
+    ) -> list[dict[str, Any]]: ...
 
 
 def get_cost_repository() -> CostRepository:

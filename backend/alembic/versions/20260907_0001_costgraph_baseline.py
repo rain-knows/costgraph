@@ -43,6 +43,7 @@ def upgrade() -> None:
         sa.Column("source_system", sa.String(length=64), nullable=False),
         sa.Column("source_file", sa.String(length=500), nullable=True),
         sa.Column("source_snapshot_hash", sa.String(length=64), nullable=False),
+        sa.Column("calculation_rule_version", sa.String(length=64), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("total_rows", sa.Integer(), nullable=False),
         sa.Column("valid_rows", sa.Integer(), nullable=False),
@@ -69,6 +70,7 @@ def upgrade() -> None:
             "tenant_id",
             "source_system",
             "source_snapshot_hash",
+            "calculation_rule_version",
             name="uq_data_load_batches_snapshot",
         ),
         sa.UniqueConstraint(
@@ -275,6 +277,82 @@ def upgrade() -> None:
             "source_record_id",
             name="uq_cost_records_source_record",
         ),
+        schema=COST_SCHEMA,
+    )
+    op.create_table(
+        "finished_batch_cost_projections",
+        sa.Column("tenant_id", sa.String(length=64), nullable=False),
+        sa.Column("event_id", sa.String(length=128), nullable=False),
+        sa.Column("batch_id", sa.Uuid(), nullable=False),
+        sa.Column("finished_batch_id", sa.String(length=128), nullable=False),
+        sa.Column("part_id", sa.String(length=64), nullable=False),
+        sa.Column("period", sa.String(length=7), nullable=False),
+        sa.Column("completion_time", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("cost_center_code", sa.String(length=64), nullable=False),
+        sa.Column("search_text", sa.Text(), nullable=False),
+        sa.Column("qualified_quantity", sa.Numeric(18, 4), nullable=False),
+        sa.Column("defective_quantity", sa.Numeric(18, 4), nullable=False),
+        sa.Column("completed_quantity", sa.Numeric(18, 4), nullable=False),
+        sa.Column("manufacturing_cost", sa.Numeric(18, 2), nullable=False),
+        sa.Column("post_manufacturing_cost", sa.Numeric(18, 2), nullable=False),
+        sa.Column("total_cost", sa.Numeric(18, 2), nullable=False),
+        sa.Column("total_unit_cost", sa.Numeric(18, 2), nullable=False),
+        sa.Column("summary_json", _jsonb(), nullable=False),
+        sa.Column("trace_json", _jsonb(), nullable=False),
+        sa.Column("rule_version", sa.String(length=64), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "qualified_quantity >= 0 and defective_quantity >= 0 and "
+            "completed_quantity > 0",
+            name="ck_finished_cost_projection_quantities",
+        ),
+        sa.CheckConstraint(
+            "manufacturing_cost >= 0 and post_manufacturing_cost >= 0 and "
+            "total_cost >= 0 and total_unit_cost >= 0",
+            name="ck_finished_cost_projection_costs",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "event_id"],
+            ["cost_data.cost_events.tenant_id", "cost_data.cost_events.event_id"],
+            name="fk_finished_cost_projection_event",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "part_id"],
+            ["cost_data.parts.tenant_id", "cost_data.parts.part_id"],
+            name="fk_finished_cost_projection_part",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "batch_id"],
+            [
+                "cost_data.data_load_batches.tenant_id",
+                "cost_data.data_load_batches.batch_id",
+            ],
+            name="fk_finished_cost_projection_batch",
+        ),
+        sa.PrimaryKeyConstraint("tenant_id", "event_id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "finished_batch_id",
+            name="uq_finished_cost_projection_batch",
+        ),
+        schema=COST_SCHEMA,
+    )
+    op.create_index(
+        "ix_finished_cost_projection_completion",
+        "finished_batch_cost_projections",
+        ["tenant_id", "batch_id", "period", "completion_time", "event_id"],
+        schema=COST_SCHEMA,
+    )
+    op.create_index(
+        "ix_finished_cost_projection_unit_cost",
+        "finished_batch_cost_projections",
+        ["tenant_id", "batch_id", "period", "total_unit_cost", "event_id"],
+        schema=COST_SCHEMA,
+    )
+    op.create_index(
+        "ix_finished_cost_projection_part_period",
+        "finished_batch_cost_projections",
+        ["tenant_id", "batch_id", "part_id", "period"],
         schema=COST_SCHEMA,
     )
     op.create_table(

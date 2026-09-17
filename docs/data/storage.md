@@ -6,7 +6,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 
 | schema | owner | 表 |
 | --- | --- | --- |
-| `cost_data` | 成本数据服务 | `data_load_batches`、`data_load_errors`、`parts`、`cost_events`、`cost_event_inputs`、`cost_records` |
+| `cost_data` | 成本数据服务 | `data_load_batches`、`data_load_errors`、`parts`、`cost_events`、`cost_event_inputs`、`cost_records`、`finished_batch_cost_projections` |
 | `agent_runtime` | 会话与运行服务 | `conversations`、`turns`、`messages`、`audit_traces`、`agent_runs`、`agent_run_events`、`agent_workers` |
 | `agent_checkpoint` | LangGraph 恢复状态 | `checkpoint_migrations`、`checkpoints`、`checkpoint_blobs`、`checkpoint_writes` |
 | `agent_output` | 结构化产出服务 | `artifacts` |
@@ -27,7 +27,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产成品零件和期间，并应用服务端 `ExecutionContext.data_scope`。
 - 会话、Turn、消息、Run、Trace 和 Artifact 的业务查询必须匹配 `tenant_id + principal_id`。
 - Worker 只领取数据库中已固化可信 owner 快照的 Run，不从客户端重新解释主体。
-- `raw_payload`/JSONB 只做导入追溯，不直接参与金额计算。累计成本、单位成本、占比和三视图汇总均为查询时派生值，不落库。
+- `raw_payload`/JSONB 只做导入追溯，不直接参与金额计算。累计成本、单位成本、占比和三视图由同一确定性服务在发布时计算，并写入绑定快照与规则版本的只读投影；事实表不保存派生值，投影不能成为事实或安全边界。
 - Artifact 只保存业务关联 ID，不对 Runtime 表建跨 schema 外键；删除会话不会删除独立历史产出。
 - Artifact 的 `report_json` 直接保存并读取当前 `CostReportV3`；不在 Repository 中转换旧报告。展示型和周期对比型共用 `agent_output.artifacts`，目标期间继续写入索引列 `period`，基准期间保存在报告 JSON 的 `comparison.baseline_period`。
 - checkpoint `thread_id` 固定为 `run_id`，没有公共读取 API，并按终态保留规则清理。

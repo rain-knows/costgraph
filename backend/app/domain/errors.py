@@ -92,3 +92,17 @@ class CostDataNotFoundError(AgentDomainError):
             "未找到指定的已发布成本批次数据。",
             details=details,
         )
+
+
+class CostProjectionUnavailableError(AgentDomainError):
+    def __init__(self, actual_rule_version: str | None) -> None:
+        from app.domain.cost import CALCULATION_RULE_VERSION
+
+        super().__init__(
+            "cost_projection_unavailable",
+            "已发布成本快照缺少当前规则版本的查询投影，请重新导入数据。",
+            details={
+                "expected_rule_version": CALCULATION_RULE_VERSION,
+                "actual_rule_version": actual_rule_version,
+            },
+        )

@@ -46,14 +46,11 @@ def list_parts_tool(execution_context: object) -> list[dict[str, Any]]:
 
 
 def load_finished_batches_tool(
-    period: str, execution_context: object
+    period: str, part_id: str, execution_context: object
 ) -> list[dict[str, Any]]:
-    return [
-        calculate_finished_batch_cost(source)
-        for source in cost_repository.list_finished_batch_sources(
-            period, execution_context_from_state(execution_context)
-        )
-    ]
+    return cost_repository.list_part_period_projections(
+        part_id, period, execution_context_from_state(execution_context)
+    )
 
 
 def calculate_finished_batch_cost_tool(source: dict[str, Any]) -> dict[str, Any]:

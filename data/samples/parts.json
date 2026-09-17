@@ -1,9 +1,1064 @@
 [
-  {"part_id":"P-RAW-001","part_number":"RM-PP-EPDM-01","part_description":"门板注塑用PP/EPDM单件料包","part_type":"raw_material","product_family":"汽车内饰件","unit":"pcs","source_record_id":"SRC-P-RAW-001"},
-  {"part_id":"P-SEMI-001","part_number":"SF-CLIP-01","part_description":"外购门板金属卡扣套件","part_type":"purchased_semi_finished","product_family":"汽车内饰件","unit":"pcs","source_record_id":"SRC-P-SEMI-001"},
-  {"part_id":"P-WIP-001","part_number":"WIP-DOOR-SUB","part_description":"前门护板注塑基材","part_type":"work_in_progress","product_family":"汽车内饰件","unit":"pcs","source_record_id":"SRC-P-WIP-001"},
-  {"part_id":"P-WIP-002","part_number":"WIP-DOOR-SKIN","part_description":"前门护板包覆半成品","part_type":"work_in_progress","product_family":"汽车内饰件","unit":"pcs","source_record_id":"SRC-P-WIP-002"},
-  {"part_id":"P-FG-001","part_number":"FG-001","part_description":"左前门内饰板总成","part_type":"finished_good","product_family":"汽车门板内饰","unit":"pcs","source_record_id":"SRC-P-FG-001"},
-  {"part_id":"P-FG-002","part_number":"FG-002","part_description":"中控台钢琴黑装饰面板","part_type":"finished_good","product_family":"汽车中控内饰","unit":"pcs","source_record_id":"SRC-P-FG-002"},
-  {"part_id":"P-FG-003","part_number":"FG-003","part_description":"仪表板真空镀铬装饰条","part_type":"finished_good","product_family":"汽车仪表板内饰","unit":"pcs","source_record_id":"SRC-P-FG-003"}
+  {
+    "part_id": "P-RAW-001",
+    "part_number": "RM-PP-EPDM-01",
+    "part_description": "门板注塑用PP/EPDM单件料包",
+    "part_type": "raw_material",
+    "product_family": "汽车内饰件",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-RAW-001"
+  },
+  {
+    "part_id": "P-SEMI-001",
+    "part_number": "SF-CLIP-01",
+    "part_description": "外购门板金属卡扣套件",
+    "part_type": "purchased_semi_finished",
+    "product_family": "汽车内饰件",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-SEMI-001"
+  },
+  {
+    "part_id": "P-WIP-001",
+    "part_number": "WIP-DOOR-SUB",
+    "part_description": "前门护板注塑基材",
+    "part_type": "work_in_progress",
+    "product_family": "汽车内饰件",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-WIP-001"
+  },
+  {
+    "part_id": "P-WIP-002",
+    "part_number": "WIP-DOOR-SKIN",
+    "part_description": "前门护板包覆半成品",
+    "part_type": "work_in_progress",
+    "product_family": "汽车内饰件",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-WIP-002"
+  },
+  {
+    "part_id": "P-FG-001",
+    "part_number": "FG-001",
+    "part_description": "左前门内饰板总成",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-FG-001"
+  },
+  {
+    "part_id": "P-FG-002",
+    "part_number": "FG-002",
+    "part_description": "中控台钢琴黑装饰面板",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-FG-002"
+  },
+  {
+    "part_id": "P-FG-003",
+    "part_number": "FG-003",
+    "part_description": "仪表板真空镀铬装饰条",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "SRC-P-FG-003"
+  },
+  {
+    "part_id": "GEN-P-FG-004",
+    "part_number": "FG-004",
+    "part_description": "座舱装饰件系列 004",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-004"
+  },
+  {
+    "part_id": "GEN-P-FG-005",
+    "part_number": "FG-005",
+    "part_description": "座舱装饰件系列 005",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-005"
+  },
+  {
+    "part_id": "GEN-P-FG-006",
+    "part_number": "FG-006",
+    "part_description": "座舱装饰件系列 006",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-006"
+  },
+  {
+    "part_id": "GEN-P-FG-007",
+    "part_number": "FG-007",
+    "part_description": "座舱装饰件系列 007",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-007"
+  },
+  {
+    "part_id": "GEN-P-FG-008",
+    "part_number": "FG-008",
+    "part_description": "座舱装饰件系列 008",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-008"
+  },
+  {
+    "part_id": "GEN-P-FG-009",
+    "part_number": "FG-009",
+    "part_description": "座舱装饰件系列 009",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-009"
+  },
+  {
+    "part_id": "GEN-P-FG-010",
+    "part_number": "FG-010",
+    "part_description": "座舱装饰件系列 010",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-010"
+  },
+  {
+    "part_id": "GEN-P-FG-011",
+    "part_number": "FG-011",
+    "part_description": "座舱装饰件系列 011",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-011"
+  },
+  {
+    "part_id": "GEN-P-FG-012",
+    "part_number": "FG-012",
+    "part_description": "座舱装饰件系列 012",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-012"
+  },
+  {
+    "part_id": "GEN-P-FG-013",
+    "part_number": "FG-013",
+    "part_description": "座舱装饰件系列 013",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-013"
+  },
+  {
+    "part_id": "GEN-P-FG-014",
+    "part_number": "FG-014",
+    "part_description": "座舱装饰件系列 014",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-014"
+  },
+  {
+    "part_id": "GEN-P-FG-015",
+    "part_number": "FG-015",
+    "part_description": "座舱装饰件系列 015",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-015"
+  },
+  {
+    "part_id": "GEN-P-FG-016",
+    "part_number": "FG-016",
+    "part_description": "座舱装饰件系列 016",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-016"
+  },
+  {
+    "part_id": "GEN-P-FG-017",
+    "part_number": "FG-017",
+    "part_description": "座舱装饰件系列 017",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-017"
+  },
+  {
+    "part_id": "GEN-P-FG-018",
+    "part_number": "FG-018",
+    "part_description": "座舱装饰件系列 018",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-018"
+  },
+  {
+    "part_id": "GEN-P-FG-019",
+    "part_number": "FG-019",
+    "part_description": "座舱装饰件系列 019",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-019"
+  },
+  {
+    "part_id": "GEN-P-FG-020",
+    "part_number": "FG-020",
+    "part_description": "座舱装饰件系列 020",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-020"
+  },
+  {
+    "part_id": "GEN-P-FG-021",
+    "part_number": "FG-021",
+    "part_description": "座舱装饰件系列 021",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-021"
+  },
+  {
+    "part_id": "GEN-P-FG-022",
+    "part_number": "FG-022",
+    "part_description": "座舱装饰件系列 022",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-022"
+  },
+  {
+    "part_id": "GEN-P-FG-023",
+    "part_number": "FG-023",
+    "part_description": "座舱装饰件系列 023",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-023"
+  },
+  {
+    "part_id": "GEN-P-FG-024",
+    "part_number": "FG-024",
+    "part_description": "座舱装饰件系列 024",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-024"
+  },
+  {
+    "part_id": "GEN-P-FG-025",
+    "part_number": "FG-025",
+    "part_description": "座舱装饰件系列 025",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-025"
+  },
+  {
+    "part_id": "GEN-P-FG-026",
+    "part_number": "FG-026",
+    "part_description": "座舱装饰件系列 026",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-026"
+  },
+  {
+    "part_id": "GEN-P-FG-027",
+    "part_number": "FG-027",
+    "part_description": "座舱装饰件系列 027",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-027"
+  },
+  {
+    "part_id": "GEN-P-FG-028",
+    "part_number": "FG-028",
+    "part_description": "座舱装饰件系列 028",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-028"
+  },
+  {
+    "part_id": "GEN-P-FG-029",
+    "part_number": "FG-029",
+    "part_description": "座舱装饰件系列 029",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-029"
+  },
+  {
+    "part_id": "GEN-P-FG-030",
+    "part_number": "FG-030",
+    "part_description": "座舱装饰件系列 030",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-030"
+  },
+  {
+    "part_id": "GEN-P-FG-031",
+    "part_number": "FG-031",
+    "part_description": "座舱装饰件系列 031",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-031"
+  },
+  {
+    "part_id": "GEN-P-FG-032",
+    "part_number": "FG-032",
+    "part_description": "座舱装饰件系列 032",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-032"
+  },
+  {
+    "part_id": "GEN-P-FG-033",
+    "part_number": "FG-033",
+    "part_description": "座舱装饰件系列 033",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-033"
+  },
+  {
+    "part_id": "GEN-P-FG-034",
+    "part_number": "FG-034",
+    "part_description": "座舱装饰件系列 034",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-034"
+  },
+  {
+    "part_id": "GEN-P-FG-035",
+    "part_number": "FG-035",
+    "part_description": "座舱装饰件系列 035",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-035"
+  },
+  {
+    "part_id": "GEN-P-FG-036",
+    "part_number": "FG-036",
+    "part_description": "座舱装饰件系列 036",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-036"
+  },
+  {
+    "part_id": "GEN-P-FG-037",
+    "part_number": "FG-037",
+    "part_description": "座舱装饰件系列 037",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-037"
+  },
+  {
+    "part_id": "GEN-P-FG-038",
+    "part_number": "FG-038",
+    "part_description": "座舱装饰件系列 038",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-038"
+  },
+  {
+    "part_id": "GEN-P-FG-039",
+    "part_number": "FG-039",
+    "part_description": "座舱装饰件系列 039",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-039"
+  },
+  {
+    "part_id": "GEN-P-FG-040",
+    "part_number": "FG-040",
+    "part_description": "座舱装饰件系列 040",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-040"
+  },
+  {
+    "part_id": "GEN-P-FG-041",
+    "part_number": "FG-041",
+    "part_description": "座舱装饰件系列 041",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-041"
+  },
+  {
+    "part_id": "GEN-P-FG-042",
+    "part_number": "FG-042",
+    "part_description": "座舱装饰件系列 042",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-042"
+  },
+  {
+    "part_id": "GEN-P-FG-043",
+    "part_number": "FG-043",
+    "part_description": "座舱装饰件系列 043",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-043"
+  },
+  {
+    "part_id": "GEN-P-FG-044",
+    "part_number": "FG-044",
+    "part_description": "座舱装饰件系列 044",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-044"
+  },
+  {
+    "part_id": "GEN-P-FG-045",
+    "part_number": "FG-045",
+    "part_description": "座舱装饰件系列 045",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-045"
+  },
+  {
+    "part_id": "GEN-P-FG-046",
+    "part_number": "FG-046",
+    "part_description": "座舱装饰件系列 046",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-046"
+  },
+  {
+    "part_id": "GEN-P-FG-047",
+    "part_number": "FG-047",
+    "part_description": "座舱装饰件系列 047",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-047"
+  },
+  {
+    "part_id": "GEN-P-FG-048",
+    "part_number": "FG-048",
+    "part_description": "座舱装饰件系列 048",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-048"
+  },
+  {
+    "part_id": "GEN-P-FG-049",
+    "part_number": "FG-049",
+    "part_description": "座舱装饰件系列 049",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-049"
+  },
+  {
+    "part_id": "GEN-P-FG-050",
+    "part_number": "FG-050",
+    "part_description": "座舱装饰件系列 050",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-050"
+  },
+  {
+    "part_id": "GEN-P-FG-051",
+    "part_number": "FG-051",
+    "part_description": "座舱装饰件系列 051",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-051"
+  },
+  {
+    "part_id": "GEN-P-FG-052",
+    "part_number": "FG-052",
+    "part_description": "座舱装饰件系列 052",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-052"
+  },
+  {
+    "part_id": "GEN-P-FG-053",
+    "part_number": "FG-053",
+    "part_description": "座舱装饰件系列 053",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-053"
+  },
+  {
+    "part_id": "GEN-P-FG-054",
+    "part_number": "FG-054",
+    "part_description": "座舱装饰件系列 054",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-054"
+  },
+  {
+    "part_id": "GEN-P-FG-055",
+    "part_number": "FG-055",
+    "part_description": "座舱装饰件系列 055",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-055"
+  },
+  {
+    "part_id": "GEN-P-FG-056",
+    "part_number": "FG-056",
+    "part_description": "座舱装饰件系列 056",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-056"
+  },
+  {
+    "part_id": "GEN-P-FG-057",
+    "part_number": "FG-057",
+    "part_description": "座舱装饰件系列 057",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-057"
+  },
+  {
+    "part_id": "GEN-P-FG-058",
+    "part_number": "FG-058",
+    "part_description": "座舱装饰件系列 058",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-058"
+  },
+  {
+    "part_id": "GEN-P-FG-059",
+    "part_number": "FG-059",
+    "part_description": "座舱装饰件系列 059",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-059"
+  },
+  {
+    "part_id": "GEN-P-FG-060",
+    "part_number": "FG-060",
+    "part_description": "座舱装饰件系列 060",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-060"
+  },
+  {
+    "part_id": "GEN-P-FG-061",
+    "part_number": "FG-061",
+    "part_description": "座舱装饰件系列 061",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-061"
+  },
+  {
+    "part_id": "GEN-P-FG-062",
+    "part_number": "FG-062",
+    "part_description": "座舱装饰件系列 062",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-062"
+  },
+  {
+    "part_id": "GEN-P-FG-063",
+    "part_number": "FG-063",
+    "part_description": "座舱装饰件系列 063",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-063"
+  },
+  {
+    "part_id": "GEN-P-FG-064",
+    "part_number": "FG-064",
+    "part_description": "座舱装饰件系列 064",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-064"
+  },
+  {
+    "part_id": "GEN-P-FG-065",
+    "part_number": "FG-065",
+    "part_description": "座舱装饰件系列 065",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-065"
+  },
+  {
+    "part_id": "GEN-P-FG-066",
+    "part_number": "FG-066",
+    "part_description": "座舱装饰件系列 066",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-066"
+  },
+  {
+    "part_id": "GEN-P-FG-067",
+    "part_number": "FG-067",
+    "part_description": "座舱装饰件系列 067",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-067"
+  },
+  {
+    "part_id": "GEN-P-FG-068",
+    "part_number": "FG-068",
+    "part_description": "座舱装饰件系列 068",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-068"
+  },
+  {
+    "part_id": "GEN-P-FG-069",
+    "part_number": "FG-069",
+    "part_description": "座舱装饰件系列 069",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-069"
+  },
+  {
+    "part_id": "GEN-P-FG-070",
+    "part_number": "FG-070",
+    "part_description": "座舱装饰件系列 070",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-070"
+  },
+  {
+    "part_id": "GEN-P-FG-071",
+    "part_number": "FG-071",
+    "part_description": "座舱装饰件系列 071",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-071"
+  },
+  {
+    "part_id": "GEN-P-FG-072",
+    "part_number": "FG-072",
+    "part_description": "座舱装饰件系列 072",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-072"
+  },
+  {
+    "part_id": "GEN-P-FG-073",
+    "part_number": "FG-073",
+    "part_description": "座舱装饰件系列 073",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-073"
+  },
+  {
+    "part_id": "GEN-P-FG-074",
+    "part_number": "FG-074",
+    "part_description": "座舱装饰件系列 074",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-074"
+  },
+  {
+    "part_id": "GEN-P-FG-075",
+    "part_number": "FG-075",
+    "part_description": "座舱装饰件系列 075",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-075"
+  },
+  {
+    "part_id": "GEN-P-FG-076",
+    "part_number": "FG-076",
+    "part_description": "座舱装饰件系列 076",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-076"
+  },
+  {
+    "part_id": "GEN-P-FG-077",
+    "part_number": "FG-077",
+    "part_description": "座舱装饰件系列 077",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-077"
+  },
+  {
+    "part_id": "GEN-P-FG-078",
+    "part_number": "FG-078",
+    "part_description": "座舱装饰件系列 078",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-078"
+  },
+  {
+    "part_id": "GEN-P-FG-079",
+    "part_number": "FG-079",
+    "part_description": "座舱装饰件系列 079",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-079"
+  },
+  {
+    "part_id": "GEN-P-FG-080",
+    "part_number": "FG-080",
+    "part_description": "座舱装饰件系列 080",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-080"
+  },
+  {
+    "part_id": "GEN-P-FG-081",
+    "part_number": "FG-081",
+    "part_description": "座舱装饰件系列 081",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-081"
+  },
+  {
+    "part_id": "GEN-P-FG-082",
+    "part_number": "FG-082",
+    "part_description": "座舱装饰件系列 082",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-082"
+  },
+  {
+    "part_id": "GEN-P-FG-083",
+    "part_number": "FG-083",
+    "part_description": "座舱装饰件系列 083",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-083"
+  },
+  {
+    "part_id": "GEN-P-FG-084",
+    "part_number": "FG-084",
+    "part_description": "座舱装饰件系列 084",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-084"
+  },
+  {
+    "part_id": "GEN-P-FG-085",
+    "part_number": "FG-085",
+    "part_description": "座舱装饰件系列 085",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-085"
+  },
+  {
+    "part_id": "GEN-P-FG-086",
+    "part_number": "FG-086",
+    "part_description": "座舱装饰件系列 086",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-086"
+  },
+  {
+    "part_id": "GEN-P-FG-087",
+    "part_number": "FG-087",
+    "part_description": "座舱装饰件系列 087",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-087"
+  },
+  {
+    "part_id": "GEN-P-FG-088",
+    "part_number": "FG-088",
+    "part_description": "座舱装饰件系列 088",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-088"
+  },
+  {
+    "part_id": "GEN-P-FG-089",
+    "part_number": "FG-089",
+    "part_description": "座舱装饰件系列 089",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-089"
+  },
+  {
+    "part_id": "GEN-P-FG-090",
+    "part_number": "FG-090",
+    "part_description": "座舱装饰件系列 090",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-090"
+  },
+  {
+    "part_id": "GEN-P-FG-091",
+    "part_number": "FG-091",
+    "part_description": "座舱装饰件系列 091",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-091"
+  },
+  {
+    "part_id": "GEN-P-FG-092",
+    "part_number": "FG-092",
+    "part_description": "座舱装饰件系列 092",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-092"
+  },
+  {
+    "part_id": "GEN-P-FG-093",
+    "part_number": "FG-093",
+    "part_description": "座舱装饰件系列 093",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-093"
+  },
+  {
+    "part_id": "GEN-P-FG-094",
+    "part_number": "FG-094",
+    "part_description": "座舱装饰件系列 094",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-094"
+  },
+  {
+    "part_id": "GEN-P-FG-095",
+    "part_number": "FG-095",
+    "part_description": "座舱装饰件系列 095",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-095"
+  },
+  {
+    "part_id": "GEN-P-FG-096",
+    "part_number": "FG-096",
+    "part_description": "座舱装饰件系列 096",
+    "part_type": "finished_good",
+    "product_family": "汽车门板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-096"
+  },
+  {
+    "part_id": "GEN-P-FG-097",
+    "part_number": "FG-097",
+    "part_description": "座舱装饰件系列 097",
+    "part_type": "finished_good",
+    "product_family": "汽车中控内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-097"
+  },
+  {
+    "part_id": "GEN-P-FG-098",
+    "part_number": "FG-098",
+    "part_description": "座舱装饰件系列 098",
+    "part_type": "finished_good",
+    "product_family": "汽车仪表板内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-098"
+  },
+  {
+    "part_id": "GEN-P-FG-099",
+    "part_number": "FG-099",
+    "part_description": "座舱装饰件系列 099",
+    "part_type": "finished_good",
+    "product_family": "汽车座舱装饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-099"
+  },
+  {
+    "part_id": "GEN-P-FG-100",
+    "part_number": "FG-100",
+    "part_description": "座舱装饰件系列 100",
+    "part_type": "finished_good",
+    "product_family": "汽车立柱内饰",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-FG-100"
+  },
+  {
+    "part_id": "GEN-P-COMMON-RAW-01",
+    "part_number": "RM-PP-01",
+    "part_description": "通用改性 PP 料包",
+    "part_type": "raw_material",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-RAW-01"
+  },
+  {
+    "part_id": "GEN-P-COMMON-RAW-02",
+    "part_number": "RM-ABS-01",
+    "part_description": "通用 ABS 料包",
+    "part_type": "raw_material",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-RAW-02"
+  },
+  {
+    "part_id": "GEN-P-COMMON-RAW-03",
+    "part_number": "RM-TPO-01",
+    "part_description": "通用 TPO 表皮料包",
+    "part_type": "raw_material",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-RAW-03"
+  },
+  {
+    "part_id": "GEN-P-COMMON-RAW-04",
+    "part_number": "RM-PCABS-01",
+    "part_description": "通用 PC/ABS 料包",
+    "part_type": "raw_material",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-RAW-04"
+  },
+  {
+    "part_id": "GEN-P-COMMON-RAW-05",
+    "part_number": "RM-PA66-01",
+    "part_description": "通用 PA66 增强料包",
+    "part_type": "raw_material",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-RAW-05"
+  },
+  {
+    "part_id": "GEN-P-COMMON-RAW-06",
+    "part_number": "RM-COAT-01",
+    "part_description": "通用涂层材料包",
+    "part_type": "raw_material",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-RAW-06"
+  },
+  {
+    "part_id": "GEN-P-COMMON-BUY-01",
+    "part_number": "SF-CLIP-02",
+    "part_description": "通用金属卡扣套件",
+    "part_type": "purchased_semi_finished",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-BUY-01"
+  },
+  {
+    "part_id": "GEN-P-COMMON-BUY-02",
+    "part_number": "SF-FOAM-01",
+    "part_description": "通用吸音棉套件",
+    "part_type": "purchased_semi_finished",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-BUY-02"
+  },
+  {
+    "part_id": "GEN-P-COMMON-BUY-03",
+    "part_number": "SF-TRIM-01",
+    "part_description": "通用装饰条套件",
+    "part_type": "purchased_semi_finished",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-BUY-03"
+  },
+  {
+    "part_id": "GEN-P-COMMON-BUY-04",
+    "part_number": "SF-FASTENER-01",
+    "part_description": "通用紧固件套件",
+    "part_type": "purchased_semi_finished",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-BUY-04"
+  },
+  {
+    "part_id": "GEN-P-COMMON-WIP-01",
+    "part_number": "WIP-CABIN-BASE-01",
+    "part_description": "通用座舱注塑基材一",
+    "part_type": "work_in_progress",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-WIP-01"
+  },
+  {
+    "part_id": "GEN-P-COMMON-WIP-02",
+    "part_number": "WIP-CABIN-BASE-02",
+    "part_description": "通用座舱注塑基材二",
+    "part_type": "work_in_progress",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-WIP-02"
+  },
+  {
+    "part_id": "GEN-P-COMMON-WIP-03",
+    "part_number": "WIP-CABIN-SURFACE-01",
+    "part_description": "通用座舱表面处理半成品一",
+    "part_type": "work_in_progress",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-WIP-03"
+  },
+  {
+    "part_id": "GEN-P-COMMON-WIP-04",
+    "part_number": "WIP-CABIN-SURFACE-02",
+    "part_description": "通用座舱表面处理半成品二",
+    "part_type": "work_in_progress",
+    "product_family": "汽车座舱公共部件",
+    "unit": "pcs",
+    "source_record_id": "GEN-SRC-P-COMMON-WIP-04"
+  }
 ]

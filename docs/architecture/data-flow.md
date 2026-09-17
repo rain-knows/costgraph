@@ -6,26 +6,26 @@
 parts/cost_events/cost_event_inputs/cost_records JSON
   -> CostDataImporter -> source snapshot SHA-256
   -> data_load_batches -> field/relation/DAG/business validation
+  -> deterministic roll-up -> finished batch summary/trace projections
   -> data_load_errors for rejected rows -> transactional publish
   -> previous published batch becomes superseded
   -> application reads only the new published snapshot
 ```
 
-JSON 是导入输入，不是应用请求的 Repository。失败批次不可查询；相同租户、来源系统和快照哈希幂等跳过。导入目标始终是独立 CostGraph PostgreSQL 数据库。
+JSON 是导入输入，不是应用请求的 Repository。失败批次不可查询；相同租户、来源系统、快照哈希和计算规则版本幂等跳过。事实与成本投影在同一事务发布，任一投影失败都会回滚且保留旧发布快照。导入目标始终是独立 CostGraph PostgreSQL 数据库。
 
-规范样例以汽车装饰件工厂为业务语境。黄金批次从 PP/EPDM 单件料包与外购卡扣开始，经过注塑成型、火焰处理与表皮包覆、总成装配三道工艺后形成左前门内饰板总成，用于验证多层、多投入成本卷积与追溯。
+规范样例以汽车装饰件工厂为业务语境。`backend/scripts/generate_sample_cost_data.py` 确定性生成 100 个产成品 SKU、连续 24 个月的可比批次及其公共部件追溯链；它只重建四份 JSON，不绕过校验或直接写库。黄金批次从 PP/EPDM 单件料包与外购卡扣开始，经过注塑成型、火焰处理与表皮包覆、总成装配三道工艺后形成左前门内饰板总成，用于验证多层、多投入成本卷积与追溯。扩展数据和黄金子集均由同一 `CostDataImporter` 作为单一快照校验、发布。
 
 ## 成本只读查询
 
 ```text
 HTTP query -> server principal/tenant/data scope
-  -> published parts/events/input edges/cost records
-  -> topological convolution of leaf cost vectors
-  -> six-class + material/labor/overhead + variable/fixed summaries
+  -> published finished batch cost projections
+  -> SQL filtering/sorting/pagination or overview aggregation
   -> CostOverview | FinishedBatchCostList | FinishedBatchCostDetail
 ```
 
-每个 `purchase/process` 事件只生成一个输出批次；`cost_event_inputs` 将上游输出批次的实际领用量连接到下游工艺事件，支持多投入、部分领用和同一批次分流。服务端使用 `graphlib.TopologicalSorter` 校验和排序事件图，按叶级费用向量逐边分配；完整领用的最后一条边承接舍入尾差。总览、批次列表、批次详情、Agent 报告和 Artifact 复用同一确定性结果，前端不重算金额。
+每个 `purchase/process` 事件只生成一个输出批次；`cost_event_inputs` 将上游输出批次的实际领用量连接到下游工艺事件，支持多投入、部分领用和同一批次分流。发布时服务端使用 `graphlib.TopologicalSorter` 校验和排序事件图，按叶级费用向量逐边分配；完整领用的最后一条边承接舍入尾差。总览、批次列表、批次详情、Agent 报告和 Artifact 读取同一规则版本的确定性投影，前端不重算金额；查询时不再重复读取整图或执行卷积。
 
 追溯图以最终产成品事件为根向上返回事件节点、投入边和逐笔来源记录。树形 UI 遇到共享上游只显示引用标识；图中的一个事件仍只计算一次，不能因投影成树而重复累计。
 
@@ -34,7 +34,7 @@ HTTP query -> server principal/tenant/data scope
 ```text
 HTTP -> conversation context -> capability/data-scope gate
   -> finished part + period -> clarification gate
-  -> published event graph -> Decimal convolution
+  -> published part/period cost projections
   -> presentation | period_comparison report schema 3.0 + lineage + trace
   -> atomic Run/Turn/Message/Audit/Artifact finalization
 ```
@@ -52,4 +52,4 @@ HTTP -> conversation context -> capability/data-scope gate
 
 控制面细节见 [Runtime](runtime.md)、[Harness](harness.md)、[Tool 与 Provider](tool-provider.md) 和 [Event、Trace、Replay 与 Eval](event-trace-replay.md)。
 
-代码锚点：`backend/app/services/cost_data_import_service.py`、`backend/app/services/cost_data_query_service.py`、`backend/app/domain/cost.py`、`backend/app/services/lineage_service.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/`、`backend/app/worker.py`。
+代码锚点：`backend/scripts/generate_sample_cost_data.py`、`backend/app/services/cost_data_import_service.py`、`backend/app/services/cost_data_query_service.py`、`backend/app/domain/cost.py`、`backend/app/services/lineage_service.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/`、`backend/app/worker.py`。

@@ -5,7 +5,6 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.domain.authorization import build_execution_context
-from app.services.cost_calculation_service import calculate_finished_batch_cost
 from app.services.llm_service import (
     generate_cost_analysis_with_llm,
     get_deepseek_model,
@@ -22,10 +21,11 @@ if __name__ == "__main__":
     context = build_execution_context(
         "auto", ["system_help", "cost_calculation", "report_generation"]
     )
-    source = CostFixtureRepository().load_finished_batch_source("FG-A-2026-06", context)
-    if source is None:
+    calculation = CostFixtureRepository().load_finished_batch_projection(
+        "FG-A-2026-06", context
+    )
+    if calculation is None:
         raise RuntimeError("找不到黄金产成品批次 FG-A-2026-06")
-    calculation = calculate_finished_batch_cost(source)
     analysis = generate_cost_analysis_with_llm(
         calculation["part"], "2026-06", calculation
     )

@@ -19,6 +19,8 @@ COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
 
 当前唯一 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换。已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。`dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
 
+当前 baseline 同时创建 `finished_batch_cost_projections`。导入会在同一事务中完成事实写入、420 个样例成品批次的确定性卷积和查询投影发布；首次导入比普通查询耗时更长属于预期。规则版本改变时，即使来源哈希不变也必须生成新发布批次。
+
 ```powershell
 cd D:\work\costgraph
 Copy-Item backend\.env.example backend\.env
@@ -37,8 +39,25 @@ backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.ba
 
 - 批次状态为 `published`，`error_rows=0`。
 - 四类行数与样例文件一致。
-- 3 个汽车装饰件产成品跨 2 个期间形成 6 个最终批次；黄金批次应追溯到注塑成型、火焰处理与表皮包覆、卡扣压装与门板总成装配三道连续工序。
+- 100 个产成品 SKU 覆盖 24 个自然月，每月至少 10 个最终批次；全部 SKU 至少可做同比，核心 SKU 可做连续环比。
+- 固定黄金子集仍为 3 个汽车装饰件产成品跨 2 个期间形成的 6 个最终批次，并应追溯到注塑成型、火焰处理与表皮包覆、卡扣压装与门板总成装配三道连续工序。
 - 当前租户只有一个 `published` 快照。
+
+如需从规则确定性重建仓库内样例，先运行：
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\generate_sample_cost_data.py
+```
+
+输出摘要应显示 `finished_products >= 100`、`periods == 24` 且 `minimum_finished_batches_per_period >= 10`；随后仍须执行正式导入命令，生成脚本本身不会写数据库。
+
+导入后可执行只读性能验收：
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\benchmark_cost_queries.py
+```
+
+脚本预热后分别执行总览、默认列表、单位成本排序、过滤列表和详情各 10 次；每项必须满足 `p95_seconds < 1.0` 且 `max_queries <= 2`（包含 `SET LOCAL`）。
 
 格式、关系和 48 项代码见[成本核算格式](../data/cost-accounting-format.md)。
 

@@ -1,12 +1,19 @@
+from collections import defaultdict
 from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from app.db.models import Base
+from app.schemas.cost_data import FinishedBatchCostDetail
+from app.services.cost_calculation_service import calculate_finished_batch_cost
 from app.services.cost_data_import_service import (
     _canonical_hash,
+    _projection_values,
     _validate_records,
     load_records,
 )
+from app.services.cost_source_builder import build_finished_batch_sources
 
 SAMPLES = Path(__file__).resolve().parents[2] / "data" / "samples"
 
@@ -51,6 +58,41 @@ def test_sample_files_are_valid_import_snapshot() -> None:
     assert errors == [], [(item.error_code, item.error_message) for item in errors]
 
 
+def test_sample_projection_matches_direct_calculation_for_every_finished_batch() -> (
+    None
+):
+    parts, events, inputs, records = _snapshot()
+    sources = build_finished_batch_sources(
+        parts,
+        events,
+        inputs,
+        records,
+        source_system="costgraph_samples",
+    )
+    values = _projection_values(
+        parts=parts,
+        events=events,
+        inputs=inputs,
+        records=records,
+        tenant_id="test-tenant",
+        source_system="costgraph_samples",
+        batch_id=uuid4(),
+        now=datetime.now(UTC),
+    )
+
+    assert len(values) == len(sources) == 420
+    projection_by_event = {row["event_id"]: row for row in values}
+    for source in sources:
+        direct = FinishedBatchCostDetail.model_validate(
+            calculate_finished_batch_cost(source)
+        ).model_dump(mode="json")
+        projection = projection_by_event[source["root_event_id"]]
+        assert {
+            **projection["summary_json"],
+            "trace": projection["trace_json"],
+        } == direct
+
+
 def test_sample_contains_multi_step_automotive_trim_trace() -> None:
     parts, events, inputs, _ = _snapshot()
     part_by_id = {part["part_id"]: part for part in parts}
@@ -71,6 +113,58 @@ def test_sample_contains_multi_step_automotive_trim_trace() -> None:
     assert predecessor["E-INJ-001"] == "E-RAW-001"
     assert predecessor["E-PAINT-001"] == "E-INJ-001"
     assert predecessor["E-FG-001"] == "E-PAINT-001"
+
+
+def test_sample_covers_two_comparable_years_and_shared_components() -> None:
+    parts, events, inputs, _ = _snapshot()
+    event_by_id = {event["event_id"]: event for event in events}
+    finished_part_ids = {
+        part["part_id"] for part in parts if part["part_type"] == "finished_good"
+    }
+    finished_events = [
+        event for event in events if event["part_id"] in finished_part_ids
+    ]
+
+    assert len(finished_part_ids) >= 100
+    expected_periods = {
+        f"{year}-{month:02d}" for year in (2025, 2026) for month in range(1, 13)
+    }
+    period_counts: dict[str, int] = defaultdict(int)
+    product_periods: dict[str, set[str]] = defaultdict(set)
+    for event in finished_events:
+        period_counts[event["period"]] += 1
+        product_periods[event["part_id"]].add(event["period"])
+    assert set(period_counts) == expected_periods
+    assert min(period_counts.values()) >= 10
+
+    for periods in product_periods.values():
+        months_2025 = {period[5:] for period in periods if period.startswith("2025-")}
+        months_2026 = {period[5:] for period in periods if period.startswith("2026-")}
+        assert months_2025 & months_2026
+
+    sources_by_target: dict[str, list[str]] = defaultdict(list)
+    for edge in inputs:
+        sources_by_target[edge["event_id"]].append(edge["source_event_id"])
+
+    shared_component_products: dict[str, set[str]] = defaultdict(set)
+    for finished_event in finished_events:
+        pending = list(sources_by_target[finished_event["event_id"]])
+        visited: set[str] = set()
+        while pending:
+            event_id = pending.pop()
+            if event_id in visited:
+                continue
+            visited.add(event_id)
+            source_event = event_by_id[event_id]
+            source_part_id = source_event["part_id"]
+            if source_part_id.startswith("GEN-P-COMMON-"):
+                shared_component_products[source_part_id].add(finished_event["part_id"])
+            pending.extend(sources_by_target[event_id])
+
+    assert len(shared_component_products) >= 10
+    assert all(
+        len(product_ids) >= 10 for product_ids in shared_component_products.values()
+    )
 
 
 def test_import_validation_rejects_currency_and_missing_event() -> None:

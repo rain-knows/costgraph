@@ -2,6 +2,8 @@
 
 三条 canonical 接口均为只读，使用服务端注入的 `tenant_id + principal_id + data_scope` 查询当前已发布快照。客户端不能提交租户、主体、金额、图关系或授权范围。响应由 `backend/app/schemas/cost_data.py` 的 Pydantic 契约约束；所有 Decimal 在 JSON 中作为字符串传输，币种固定为 `CNY`。
 
+成功响应读取发布时生成、并与事实快照及 `CALCULATION_RULE_VERSION` 绑定的确定性投影。若已发布批次缺少当前规则版本投影，接口返回 `503`，错误码为 `cost_projection_unavailable`；服务端不得静默回退到请求时全图卷积或旧规则结果。
+
 ## 公共值对象
 
 `PartIdentity` 包含 `part_id/part_number/part_description/part_type/product_family`。

@@ -21,11 +21,11 @@ React/Vite
      -> PostgreSQL run queue -> independent worker
         -> one LangGraph workflow
            -> RuntimeServices -> Harness -> registered provider/tools
-           -> published CostRepository event graph -> Decimal convolution
+           -> published CostRepository cost projection -> deterministic aggregation
         -> checkpoint + ordered events + atomic finalization
      -> owner-scoped conversations and artifacts
   -> FastAPI read-only cost-data API
-     -> owner/data-scope policy -> published CostRepository event graph
+     -> owner/data-scope policy -> published CostRepository cost projection
      -> deterministic DAG validation, convolution and aggregation
 ```
 
@@ -49,11 +49,11 @@ React/Vite
 ```text
 load conversation context -> policy gate -> select route
   -> understand question -> merge slots -> clarification gate
-  -> resolve finished part -> load published event graph -> convolve batches
+  -> resolve finished part -> load published part-period projections -> aggregate batches
   -> build report -> final answer -> atomic artifact finalization
 ```
 
-缺少唯一产成品零件或 `period` 时，图在读取成本输入前返回 `needs_clarification`，且不创建 Artifact。期间按最终批次的 `completion_time` 归属；`system_help` 路由不会读取成本事实。明确报表词进入 `report_generation`，普通成本请求进入 `cost_calculation`；报表意图进一步解析为 `presentation` 或 `period_comparison`，对比型在同一权限和数据范围内分别读取两期事实。报表分析 Provider 只接收零件、期间、确定性计算结果和状态栏，Decimal 事实按原精度序列化为字符串；报告模型接收成本批次的 `datetime` 并在公开 JSON 中输出时间字符串。
+缺少唯一产成品零件或 `period` 时，图在读取成本投影前返回 `needs_clarification`，且不创建 Artifact。期间按最终批次的 `completion_time` 归属；`system_help` 路由不会读取成本事实。明确报表词进入 `report_generation`，普通成本请求进入 `cost_calculation`；报表意图进一步解析为 `presentation` 或 `period_comparison`，对比型在同一权限和数据范围内分别读取两期投影。报表分析 Provider 只接收零件、期间、确定性计算结果和状态栏，Decimal 事实按原精度序列化为字符串；报告模型接收成本批次的 `datetime` 并在公开 JSON 中输出时间字符串。
 
 ## 核心不变量
 
