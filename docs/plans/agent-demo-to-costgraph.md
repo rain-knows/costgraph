@@ -17,7 +17,7 @@
 | 分类 | 结论 |
 | --- | --- |
 | 保留 | LangGraph Runtime/Harness；能力、主体与数据范围校验；Provider/Tool Registry；Worker、租约与 checkpoint；SSE；幂等、取消和 finalizing；Artifact；Trace/Replay/Eval；导入发布机制。 |
-| 整体替换 | 产品期间聚合替换为批次 DAG 卷积；成本 API 替换为完工批次列表与追溯详情；Agent/Artifact 报告替换为 schema `2.0`；前端成本页替换为六类、料工费、变动/固定三视图。 |
+| 整体替换 | 产品期间聚合替换为批次 DAG 卷积；成本 API 替换为完工批次列表与追溯详情；Agent/Artifact 报告替换为 schema `3.0`；前端成本页替换为六类、料工费、变动/固定三视图。 |
 | 不迁移 | 旧成本事实与三份样例；旧成本 `/products` 路由；旧五类成本字段；旧报告的比较、工序拆分、构成图和日期范围；旧迁移源历史数据。 |
 | 当前不实现 | 计划 BOM、库存结存、返工分支、副产品、异常工单、审批、PDF/Excel 导出和多 Agent。 |
 
@@ -43,20 +43,24 @@
 
 ## 本轮验收清单
 
-完成实现后，将实际命令、通过数、skip 和环境限制补到本节；一种测试不能替代另一种。
+完成实现后，将实际命令、通过数、skip 和环境限制补到本节；一种测试不能替代另一种。下表为 2026-10-09 在本机（Windows / Python 3.12 / PostgreSQL 18.4）实际执行的结果。
 
 | 检查 | 当前证据 |
 | --- | --- |
-| 后端完整 Pytest | `82 passed, 3 skipped, 2 warnings` |
-| 真实 PostgreSQL 导入、隔离与 Runtime 集成 | 未执行：当前环境未设置 `COST_DATABASE_URL`/`TEST_COST_DATABASE_URL`，且未发现可用 PostgreSQL 服务 |
-| 黄金批次 API 与三视图恒等式 | 已通过；制造成本 `50000.00`、制造单位成本1 `50.00`、合计单位成本2 `53.50`，三视图恒等式通过 |
-| `verify_agent.py` 与离线 Eval | `verify_agent.py` 通过；离线 Eval `5/5` 通过；fixture 不证明真实模型可用 |
+| 后端完整 Pytest | `96 passed, 3 skipped, 2 warnings`（`backend\.venv\Scripts\python.exe -m pytest backend\tests -q`） |
+| Ruff lint 与 format | `All checks passed!`、`94 files already formatted`（`scripts\check_python_quality.ps1`） |
+| 真实 PostgreSQL 导入、隔离与 Runtime 集成 | 已连通真实库：`alembic current` = `20260907_0001`，四 schema 共 19 表，`parts=118`、`cost_events=2494`、`cost_event_inputs=2076`、`cost_records=7061`、`finished_batch_cost_projections=420`，租户 `local-costgraph-tenant` 唯一 `published` 发布批次。durable 三例（Worker 领取/checkpoint 恢复/原子终态、API SSE 取消与 owner 隔离、预算与固定协议版本）仍需 `TEST_COST_DATABASE_URL` 指向独立测试库后才算覆盖，当前仍为 3 skip。 |
+| 黄金批次 API 与三视图恒等式 | 真实库上通过：制造成本 `50000.00`、制造单位成本1 `50.00`、合计成本2 `53500.00`、合计单位成本2 `53.50`，三视图恒等式通过 |
+| `verify_agent.py` 与离线 Eval | `verify_agent.py` 通过（`FG-001 2026-06`，`total_cost=50000.00`，`unit_cost=53.50`，`source_events=5`）；离线 Eval `6/6` 通过；fixture 不证明真实模型可用 |
 | 真实 DeepSeek | 本轮未执行；必须单独记录 provider、model、时间和结果 |
-| 前端 Vitest、生产构建与 bundle 门禁 | Vitest `18 passed`；生产构建通过；bundle 初始 JavaScript `191.9 KiB`，低于 `500 KiB` 门禁 |
+| 前端 Vitest、生产构建与 bundle 门禁 | Vitest `27 passed`（清除了宿主继承的 `NODE_ENV=production`；`vitest.config.ts` 已固定测试 `NODE_ENV`）；生产构建通过；bundle 初始 JavaScript `196.9 KiB`，低于 `500 KiB` 门禁 |
+| 只读性能验收 | `benchmark_cost_queries.py` 五项 p95 `0.38–0.49s`，均 `< 1.0s` 且 `max_queries = 2` |
 | 桌面/移动、浅/深主题视觉检查 | 未执行 |
 | 文档同步与 `git diff --check` | 均通过 |
 
-黄金批次的固定输入与结果见[成本核算格式](../data/cost-accounting-format.md)：完工 `1000.0000`、合格 `950.0000`、不良 `50.0000`；制造成本 `50000.00`、制造单位成本1 `50.00`、合计成本2 `53500.00`、合计单位成本2 `53.50`。成本详情、Agent report schema `2.0` 和 Artifact 必须一致。
+导入命令未在本轮重新执行；上表 PostgreSQL 证据来自当前已发布快照的只读查询（overview、批次详情、投影计数），不等同于一次全新导入的验收。
+
+黄金批次的固定输入与结果见[成本核算格式](../data/cost-accounting-format.md)：完工 `1000.0000`、合格 `950.0000`、不良 `50.0000`；制造成本 `50000.00`、制造单位成本1 `50.00`、合计成本2 `53500.00`、合计单位成本2 `53.50`。成本详情、Agent report schema `3.0` 和 Artifact 必须一致。
 
 ## 后续演进顺序
 

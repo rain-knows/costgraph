@@ -122,6 +122,10 @@ Pop-Location
 git diff --check
 ```
 
+`check_docs_sync.ps1` 默认只比较本工作树未提交改动，因此本地跑它必须保留工作区改动。CI 在干净检出上运行，此时它读取 `DOCS_SYNC_BASE_REF`（PR 基分支 SHA 或推送前 SHA）改为比较 `ref...HEAD`；首次推送或手动触发时该 ref 无法解析，脚本会警告并退回本地 diff 行为，不因基准缺失而失败。同一门禁由 `.github/workflows/ci.yml` 的 `docs` job 在 windows-latest 上执行。
+
+CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 3 个 skip，与下述验证矩阵一致。
+
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
 - 成本测试覆盖多投入、部分领用、同批次分流、不良成本承接、全量领用尾差、三视图恒等式和黄金结果。
 - PostgreSQL 集成覆盖发布、数据范围、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。未配置 `TEST_COST_DATABASE_URL` 导致的 skip 必须单独报告。

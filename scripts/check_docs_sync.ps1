@@ -152,11 +152,32 @@ foreach ($doc in $requiredDocs | Where-Object { $_ -ne "README.md" }) {
     }
 }
 
+$baseRef = $env:DOCS_SYNC_BASE_REF
 $changed = @(
     git -C $repoRoot diff --name-only
     git -C $repoRoot diff --cached --name-only
     git -C $repoRoot ls-files --others --exclude-standard
-) | Where-Object { $_ -and $_.Trim() } |
+)
+if ($baseRef -and $baseRef.Trim()) {
+    # CI 检出的是干净工作树，上面的本地 diff 为空，变更映射会整体跳过。
+    # 设置 DOCS_SYNC_BASE_REF（如 origin/main）后改为比较本次推送/PR 范围。
+    # 首次推送、新分支或手动触发时该 ref 可能不存在（全零 SHA），此时保持
+    # 本地 diff 行为，不让门禁因无法解析基准而失败。
+    $resolvedRef = $baseRef.Trim()
+    git -C $repoRoot rev-parse --verify --quiet "$resolvedRef^{commit}" > $null 2>&1
+    $refExists = $LASTEXITCODE -eq 0
+    # 探测失败只反映“基准不可解析”，不能变成脚本自身的退出码：
+    # CI 用 pwsh -File 运行，检查通过却带着非零码返回会被判成失败。
+    $global:LASTEXITCODE = 0
+    if ($refExists) {
+        $changed += git -C $repoRoot diff --name-only "$resolvedRef...HEAD"
+    }
+    else {
+        Write-Warning "DOCS_SYNC_BASE_REF=$resolvedRef 无法解析，本次仅按本地 diff 检查变更映射。"
+    }
+}
+$changed = $changed |
+    Where-Object { $_ -and $_.Trim() } |
     ForEach-Object { $_.Trim().Replace("\", "/") } |
     Sort-Object -Unique
 
