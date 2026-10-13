@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { Box, ChevronDown, ChevronRight, GitMerge, ShoppingCart } from 'lucide-react'
 import type { CostTraceEdge, CostTraceGraph, CostTraceNode } from '../api/costData'
-import { cn, formatDecimal, formatPreciseMoney } from '../lib/utils'
+import { cn, formatDecimal, formatPreciseMoney, formatQuantity } from '../lib/utils'
 import { Badge } from './ui'
 
 type TreeRow = {
@@ -96,8 +96,8 @@ export function CostTree({ graph, selectedEventId, onSelect }: {
             <span><span className="block">{eventLabel(row.node)}</span><span className="meta mt-1 block">{row.node.event_id}</span></span>
             <span className="num text-right">
               {row.edge
-                ? `${formatDecimal(row.edge.consumed_quantity, 4)} ${row.edge.unit}`
-                : `${formatDecimal(row.node.completed_quantity, 4)} ${row.node.unit}`}
+                ? `${formatQuantity(row.edge.consumed_quantity)} ${row.edge.unit}`
+                : `${formatQuantity(row.node.completed_quantity)} ${row.node.unit}`}
               {row.edge ? <span className="meta mt-1 block">分配 {formatRate(row.edge.allocation_ratio)}</span> : null}
             </span>
             <span className="num text-right">

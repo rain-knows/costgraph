@@ -84,6 +84,14 @@ floating section card.
 - A report must not expose an arbitrary chart picker. Chart selection follows
   the server-declared report style and measure semantics; every comparison
   chart keeps the baseline and target periods visible in its title or legend.
+- `presentation` reports lead with the server-provided period identity and
+  summary cards, then show stacked material/labor/overhead composition,
+  analysis insights, cost views, batch details, and audit metadata. The
+  presentation layout collapses to one reading order on narrow screens while
+  preserving exact tables and chart labels.
+- Quantity metrics use integer, half-up display formatting in the frontend;
+  API values, persisted `report_json`, Decimal calculations, amounts,
+  percentages, and allocation ratios retain their existing precision.
 
 ## Responsive and accessibility baseline
 

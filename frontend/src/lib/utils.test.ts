@@ -9,8 +9,9 @@ describe('formatPercent', () => {
 })
 
 describe('formatQuantity', () => {
-  it('omits insignificant decimal zeros while preserving quantity precision', () => {
+  it('rounds quantity metrics to integer display values', () => {
     expect(formatQuantity('2420.0000')).toBe('2,420')
-    expect(formatQuantity('70.1250')).toBe('70.125')
+    expect(formatQuantity('70.4')).toBe('70')
+    expect(formatQuantity('70.5')).toBe('71')
   })
 })

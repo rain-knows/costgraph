@@ -1,6 +1,7 @@
 .dev/
 .file-versions/
 .od-skills/
+.pi/
 .codex-tmp/
 
 node_modules/

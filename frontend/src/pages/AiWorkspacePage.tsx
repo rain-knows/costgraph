@@ -1,7 +1,8 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Bot, FileBarChart2, MessageSquarePlus, Search, Send, User } from 'lucide-react'
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
-import type { AgentRunResponse, AgentStreamMessage, Clarification } from '../api/agent'
+import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import type { AgentStreamMessage, Clarification } from '../api/agent'
+import { listArtifacts, type ArtifactSummary } from '../api/artifacts'
 import {
   cancelConversationRun,
   createConversation,
@@ -18,7 +19,7 @@ import {
 } from '../api/conversations'
 import type { AppOutletContext } from '../components/AppShell'
 import { AgentStatusBar } from '../components/AgentStatusBar'
-import { Badge, Button, PageHeader } from '../components/ui'
+import { Button, PageHeader } from '../components/ui'
 import { AgentInspector } from '../features/agent-run/AgentInspector'
 import { INITIAL_RUNTIME_PROGRESS, isRuntimeProcessing, runtimeProgressReducer } from '../features/agent-run/runtimeProgress'
 import { ClarificationCard } from '../features/chat/ClarificationCard'
@@ -37,6 +38,7 @@ export function AiWorkspacePage() {
   const [creatingConversation, setCreatingConversation] = useState(false)
   const [requestError, setRequestError] = useState('')
   const [progress, dispatch] = useReducer(runtimeProgressReducer, INITIAL_RUNTIME_PROGRESS)
+  const [reportArtifacts, setReportArtifacts] = useState<Record<string, ArtifactSummary | null>>({})
   const streamController = useRef<AbortController | null>(null)
 
   const refreshConversations = useCallback(async () => {
@@ -83,7 +85,7 @@ export function AiWorkspacePage() {
   useEffect(() => {
     streamController.current?.abort()
     dispatch({ type: 'reset' })
-    setMessages([]); setRequestError(''); setReplyToClarificationId(null)
+    setMessages([]); setRequestError(''); setReplyToClarificationId(null); setReportArtifacts({})
     if (!conversationId) return
     let disposed = false
     setLoadingConversation(true)
@@ -157,6 +159,28 @@ export function AiWorkspacePage() {
   const filtered = useMemo(() => conversations.filter((item) => !search || item.title.toLowerCase().includes(search.toLowerCase())), [conversations, search])
   const liveResult = progress.result
   const liveClarification = liveResult?.clarification ?? null
+  const reportRunIds = useMemo(() => {
+    const ids = messages.map((message) => getReportRunId(message.run)).filter((value): value is string => Boolean(value))
+    if (liveResult?.report_json) ids.push(liveResult.run_id)
+    return [...new Set(ids)]
+  }, [liveResult, messages])
+  const pendingReportRunIds = useMemo(() => reportRunIds.filter((runId) => !(runId in reportArtifacts)), [reportArtifacts, reportRunIds])
+
+  useEffect(() => {
+    if (!pendingReportRunIds.length) return
+    const controller = new AbortController()
+    void Promise.all(pendingReportRunIds.map(async (runId) => {
+      try {
+        const response = await listArtifacts({ state: 'active', runId, limit: 1, offset: 0, signal: controller.signal })
+        return [runId, response.items.find((item) => item.run_id === runId) ?? null] as const
+      } catch {
+        return [runId, null] as const
+      }
+    })).then((entries) => {
+      if (!controller.signal.aborted) setReportArtifacts((current) => ({ ...current, ...Object.fromEntries(entries) }))
+    })
+    return () => controller.abort()
+  }, [pendingReportRunIds.join('|')])
 
   return <div>
     <PageHeader title="AI 分析工作台" />
@@ -171,8 +195,8 @@ export function AiWorkspacePage() {
         <div className="min-h-[500px] flex-1 space-y-4 overflow-y-auto p-5" aria-live="polite">
           {!conversationId ? <EmptyConversation onCreate={() => void newConversation()} /> : null}
           {loadingConversation ? <p className="text-center text-sm text-[var(--muted)]">正在读取会话…</p> : null}
-          {messages.map((message) => <Message key={message.message_id} message={message} activeClarificationId={replyToClarificationId} onClarification={chooseClarification} />)}
-          {liveResult?.final_message && !messages.some((message) => message.role === 'assistant' && message.content === liveResult.final_message) ? <article className="flex gap-3"><Avatar role="assistant" /><div className="max-w-[84%] bg-[var(--surface)] p-3 text-sm leading-6"><p className="whitespace-pre-wrap">{liveResult.final_message}</p>{liveClarification ? <div className="mt-3"><ClarificationCard clarification={liveClarification} onSelect={chooseClarification} /></div> : null}{liveResult.report_json ? <Button className="mt-3" size="sm" variant="ghost" onClick={() => navigate(`/reports?period=${period}&run=${encodeURIComponent(liveResult.run_id)}`)}><FileBarChart2 className="h-4 w-4" />查看结构化报表</Button> : null}</div></article> : null}
+          {messages.map((message) => <Message key={message.message_id} message={message} period={period} artifact={message.run ? reportArtifacts[getReportRunId(message.run) ?? ''] : null} activeClarificationId={replyToClarificationId} onClarification={chooseClarification} />)}
+          {liveResult?.final_message && !messages.some((message) => message.role === 'assistant' && message.content === liveResult.final_message) ? <article className="flex gap-3"><Avatar role="assistant" /><div className="max-w-[84%] bg-[var(--surface)] p-3 text-sm leading-6"><p className="whitespace-pre-wrap">{liveResult.final_message}</p>{liveClarification ? <div className="mt-3"><ClarificationCard clarification={liveClarification} onSelect={chooseClarification} /></div> : null}{liveResult.report_json ? <ReportLink artifact={reportArtifacts[liveResult.run_id] ?? null} period={period} /> : null}</div></article> : null}
           {requestError ? <p className="border-l-2 border-[var(--danger)] px-3 py-2 text-sm text-[var(--danger)]" role="alert">{requestError}</p> : null}
         </div>
         <form onSubmit={send} className="border-t border-[var(--border)] bg-[var(--bg)] p-3"><div className="flex min-h-12 items-end bg-[var(--surface)]"><textarea value={input} onChange={(event) => setInput(event.target.value)} disabled={!conversationId || isRuntimeProcessing(progress)} rows={1} placeholder={conversationId ? '产品A 2026-06 成本' : '先新建或选择会话'} className="max-h-32 min-h-12 flex-1 resize-y bg-transparent px-4 py-3 text-sm" /><button type="submit" disabled={!input.trim() || !conversationId || isRuntimeProcessing(progress)} className="grid h-12 w-12 place-items-center bg-[var(--accent)] text-[var(--accent-on)] disabled:opacity-50" aria-label="发送消息"><Send className="h-4 w-4" /></button></div><p className="mt-2 text-xs text-[var(--muted)]">仅支持系统帮助和成本计算；缺少产品或期间时会先请求补充。</p></form>
@@ -182,10 +206,20 @@ export function AiWorkspacePage() {
   </div>
 }
 
-function Message({ message, activeClarificationId, onClarification }: { message: ConversationMessage; activeClarificationId: string | null; onClarification: (value: string, clarificationId: string) => void }) {
+function Message({ message, activeClarificationId, onClarification, period, artifact }: { message: ConversationMessage; activeClarificationId: string | null; onClarification: (value: string, clarificationId: string) => void; period: string; artifact: ArtifactSummary | null }) {
   const clarification = message.run?.clarification as Clarification | null | undefined
-  const hasReport = 'has_report' in (message.run ?? {}) ? Boolean((message.run as { has_report?: boolean }).has_report) : Boolean((message.run as AgentRunResponse | null)?.report_json)
-  return <article className={cn('flex gap-3', message.role === 'user' && 'flex-row-reverse')}><Avatar role={message.role} /><div className={cn('max-w-[84%] p-3 text-sm leading-6', message.role === 'assistant' ? 'bg-[var(--surface)]' : 'border border-[var(--border)]')}><p className="whitespace-pre-wrap">{message.content}</p>{clarification ? <div className="mt-3"><ClarificationCard clarification={clarification} disabled={clarification.id !== activeClarificationId} onSelect={onClarification} /></div> : null}{hasReport ? <Badge tone="success" className="mt-3">已生成 Artifact</Badge> : null}</div></article>
+  return <article className={cn('flex gap-3', message.role === 'user' && 'flex-row-reverse')}><Avatar role={message.role} /><div className={cn('max-w-[84%] p-3 text-sm leading-6', message.role === 'assistant' ? 'bg-[var(--surface)]' : 'border border-[var(--border)]')}><p className="whitespace-pre-wrap">{message.content}</p>{clarification ? <div className="mt-3"><ClarificationCard clarification={clarification} disabled={clarification.id !== activeClarificationId} onSelect={onClarification} /></div> : null}<ReportLink artifact={artifact} period={period} /></div></article>
+}
+
+function getReportRunId(run: ConversationMessage['run']): string | null {
+  if (!run?.run_id) return null
+  if ('has_report' in run) return run.has_report ? run.run_id : null
+  return run.report_json ? run.run_id : null
+}
+
+function ReportLink({ artifact, period }: { artifact: ArtifactSummary | null; period: string }) {
+  if (!artifact) return null
+  return <Link to={`/reports/${encodeURIComponent(artifact.artifact_id)}?period=${encodeURIComponent(artifact.period || period)}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)] hover:underline"><FileBarChart2 className="h-4 w-4" />打开报表</Link>
 }
 
 function Avatar({ role }: { role: 'user' | 'assistant' }) { return <span className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-full', role === 'assistant' ? 'bg-[var(--fg)] text-[var(--bg)]' : 'bg-[var(--surface)]')} aria-hidden="true">{role === 'assistant' ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}</span> }

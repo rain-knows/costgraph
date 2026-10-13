@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { listArtifacts } from '../api/artifacts'
 import { AiWorkspacePage } from './AiWorkspacePage'
 
 const api = vi.hoisted(() => ({
@@ -16,6 +17,30 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('../api/conversations', () => api)
+vi.mock('../api/artifacts', () => ({ listArtifacts: vi.fn() }))
+const listArtifactsMock = vi.mocked(listArtifacts)
+
+const artifact = {
+  artifact_id: 'artifact-report-1',
+  artifact_type: 'cost_report' as const,
+  conversation_id: 'conv-1',
+  turn_id: 'turn-1',
+  message_id: 'message-1',
+  run_id: 'run-1',
+  conversation_title: '产品A成本分析',
+  part_id: 'part-1',
+  part_number: 'FG-001',
+  part_description: '产品A',
+  period: '2026-06',
+  report_sha256: 'hash',
+  data_snapshot_id: 'snapshot',
+  report_schema_version: '3.0',
+  rule_version: '1',
+  prompt_version: '1',
+  code_version: '1',
+  created_at: '2026-09-09T00:00:01Z',
+  deleted_at: null,
+}
 
 const historicalRun = {
   schema_version: '2.0' as const,
@@ -46,6 +71,71 @@ const historicalRun = {
 }
 
 describe('AiWorkspacePage historical runs', () => {
+  it('renders a direct report detail link for a live report result', async () => {
+    listArtifactsMock.mockResolvedValue({ items: [artifact], total: 1, limit: 1, offset: 0 })
+    api.listConversations.mockResolvedValue([])
+    api.listConversationMessages.mockResolvedValue({ items: [], next_cursor: null, has_more: false })
+    api.getActiveConversationRun.mockResolvedValue({ ...historicalRun, result: { ...historicalRun.result, report_json: { report_schema_version: '3.0' } } })
+    api.streamConversationRun.mockImplementation(async (_id, _runId, onMessage) => {
+      const result = { ...historicalRun.result, report_json: { report_schema_version: '3.0' } }
+      onMessage({ type: 'result', result }, 1)
+      return result
+    })
+
+    render(<MemoryRouter initialEntries={['/ai/conv-1?period=2026-06']}><Routes><Route element={<Outlet context={{ period: '2026-06' }} />}><Route path="/ai/:conversationId" element={<AiWorkspacePage />} /></Route></Routes></MemoryRouter>)
+
+    const link = await screen.findByRole('link', { name: '打开报表' })
+    expect(link).toHaveAttribute('href', '/reports/artifact-report-1?period=2026-06')
+    expect(listArtifactsMock).toHaveBeenCalledWith(expect.objectContaining({ runId: 'run-1', state: 'active', limit: 1 }))
+  })
+
+  it('renders a direct report detail link for a historical report message', async () => {
+    listArtifactsMock.mockResolvedValue({ items: [artifact], total: 1, limit: 1, offset: 0 })
+    api.listConversations.mockResolvedValue([])
+    api.listConversationMessages.mockResolvedValue({
+      items: [{
+        message_id: 'message-2',
+        turn_id: 'turn-1',
+        role: 'assistant',
+        content: '已完成产品A 2026-06 成本分析。',
+        run: { run_id: 'run-1', outcome: 'completed', event_count: 1, inherited_part: null, has_report: true },
+        created_at: '2026-09-09T00:00:01Z',
+      }],
+      next_cursor: null,
+      has_more: false,
+    })
+    api.getActiveConversationRun.mockResolvedValue(null)
+
+    render(<MemoryRouter initialEntries={['/ai/conv-1?period=2026-06']}><Routes><Route element={<Outlet context={{ period: '2026-06' }} />}><Route path="/ai/:conversationId" element={<AiWorkspacePage />} /></Route></Routes></MemoryRouter>)
+
+    const link = await screen.findByRole('link', { name: '打开报表' })
+    expect(link).toHaveAttribute('href', '/reports/artifact-report-1?period=2026-06')
+    expect(listArtifactsMock).toHaveBeenCalledWith(expect.objectContaining({ runId: 'run-1', state: 'active', limit: 1 }))
+  })
+
+  it('does not render a stale link when the report is not active', async () => {
+    listArtifactsMock.mockResolvedValue({ items: [], total: 0, limit: 1, offset: 0 })
+    api.listConversations.mockResolvedValue([])
+    api.listConversationMessages.mockResolvedValue({
+      items: [{
+        message_id: 'message-2',
+        turn_id: 'turn-1',
+        role: 'assistant',
+        content: '已完成产品A 2026-06 成本分析。',
+        run: { run_id: 'run-1', outcome: 'completed', event_count: 1, inherited_part: null, has_report: true },
+        created_at: '2026-09-09T00:00:01Z',
+      }],
+      next_cursor: null,
+      has_more: false,
+    })
+    api.getActiveConversationRun.mockResolvedValue(null)
+
+    render(<MemoryRouter initialEntries={['/ai/conv-1?period=2026-06']}><Routes><Route element={<Outlet context={{ period: '2026-06' }} />}><Route path="/ai/:conversationId" element={<AiWorkspacePage />} /></Route></Routes></MemoryRouter>)
+
+    expect(await screen.findByText('已完成产品A 2026-06 成本分析。')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '打开报表' })).not.toBeInTheDocument()
+  })
+
   it('reloads the latest persisted run when no active run exists', async () => {
     api.listConversations.mockResolvedValue([
       {
@@ -58,6 +148,7 @@ describe('AiWorkspacePage historical runs', () => {
         updated_at: '2026-09-09T00:00:01Z',
       },
     ])
+    listArtifactsMock.mockResolvedValue({ items: [], total: 0, limit: 1, offset: 0 })
     api.listConversationMessages.mockResolvedValue({
       items: [
         {

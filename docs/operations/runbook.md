@@ -132,7 +132,7 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 - 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `3.0`、`presentation/period_comparison` 两种样式、`report_generation` 能力路由和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
 - 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态。
 - 生产构建必须通过 bundle 门禁，初始 JS 小于 500 KB；页面与 ECharts 保持路由级懒加载。
-- 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。
+- 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。展示型报表可用仓库根目录的 `scripts/verify_reports_browser.ps1` 执行真实 Chromium CDP 验收；脚本输出 `.pi/goals/evidence/reports-browser/result.json` 和四种状态截图，并检查真实 ECharts canvas、横向溢出、报表关键区块和数量小数显示。
 
 真实 DeepSeek 检查单独执行并记录时间、provider、model 和结果；它可能产生少量费用，不能成为默认测试副作用。
 

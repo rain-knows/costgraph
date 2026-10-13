@@ -7,7 +7,7 @@ import type { AppOutletContext } from '../components/AppShell'
 import { axis, EChart, tooltip } from '../components/Charts'
 import { CostViewSummary } from '../components/CostViews'
 import { Badge, Button, IconButton, PageHeader, RequestState, Segmented } from '../components/ui'
-import { formatDecimal, formatPreciseMoney } from '../lib/utils'
+import { formatDecimal, formatPreciseMoney, formatQuantity } from '../lib/utils'
 
 export function ReportsPage() {
   const { artifactId } = useParams()
@@ -166,18 +166,21 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
   }, [artifactId, reload])
 
   const report = artifact?.report_json
+  const reportUnit = report?.finished_batches[0]?.unit ?? ''
   const batchChart = useCallback((palette: Parameters<typeof axis>[0]) => ({
     animationDuration: 180,
     color: [palette.accent, palette.fg, palette.success],
-    grid: { left: 60, right: 20, top: 36, bottom: 42 },
-    tooltip: tooltip(palette),
-    legend: { top: 0, right: 4, textStyle: { color: palette.muted, fontSize: 10 }, data: ['料', '工', '费'] },
+    title: { text: '各批次单位成本构成', subtext: '单位：元 / 件', left: 0, top: 0, textStyle: { color: palette.fg, fontFamily: 'IBM Plex Sans', fontSize: 14, fontWeight: 600 }, subtextStyle: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10 } },
+    grid: { left: 60, right: 20, top: 64, bottom: 42 },
+    tooltip: { ...tooltip(palette), valueFormatter: (value: unknown) => formatPreciseMoney(Number(value)) },
+    legend: { top: 28, right: 4, textStyle: { color: palette.muted, fontSize: 10 }, data: ['料', '工', '费'] },
     xAxis: {
       type: 'category' as const,
       data: report?.finished_batches.map((item) => item.lot_number ?? '—') ?? [],
       ...axis(palette),
       splitLine: { show: false },
-      axisLabel: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10, rotate: 20 },
+      axisLabel: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10, interval: 0, rotate: 20 },
+      axisTick: { alignWithLabel: true },
     },
     yAxis: { type: 'value' as const, ...axis(palette), axisLabel: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10 } },
     series: [
@@ -188,15 +191,17 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
       name,
       type: 'bar' as const,
       stack: 'cost',
-      barMaxWidth: 36,
+      barMaxWidth: 44,
+      label: { show: true, position: 'inside' as const, color: palette.bg, fontFamily: 'IBM Plex Mono', fontSize: 10, formatter: (params: { value?: unknown }) => Number(params.value) >= 1 ? formatChartMoney(params.value) : '' },
       data: report?.finished_batches.map((item) => Number(item.material_labor_overhead_view[key].unit_cost)) ?? [],
     })),
   }), [report])
   const comparisonChart = useCallback((palette: Parameters<typeof axis>[0]) => ({
     animationDuration: 180,
     color: [palette.muted, palette.accent],
-    grid: { left: 72, right: 20, top: 42, bottom: 56 },
-    tooltip: tooltip(palette),
+    title: { text: '六类制造成本单位对比', subtext: '基期与目标期 · 单位：元 / 单位', left: 0, top: 0, textStyle: { color: palette.fg, fontFamily: 'IBM Plex Sans', fontSize: 14, fontWeight: 600 }, subtextStyle: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10 } },
+    grid: { left: 72, right: 20, top: 64, bottom: 56 },
+    tooltip: { ...tooltip(palette), valueFormatter: (value: unknown) => formatPreciseMoney(Number(value)) },
     legend: {
       top: 0,
       right: 4,
@@ -212,8 +217,8 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
     },
     yAxis: { type: 'value' as const, ...axis(palette), axisLabel: { color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 10 } },
     series: report?.comparison ? [
-      { name: report.comparison.baseline_period, type: 'bar' as const, barMaxWidth: 28, data: report.comparison.manufacturing_groups.map((item) => Number(item.baseline_value)) },
-      { name: report.comparison.current_period, type: 'bar' as const, barMaxWidth: 28, data: report.comparison.manufacturing_groups.map((item) => Number(item.current_value)) },
+      { name: report.comparison.baseline_period, type: 'bar' as const, barMaxWidth: 32, label: { show: true, position: 'top' as const, color: palette.muted, fontFamily: 'IBM Plex Mono', fontSize: 9, formatter: (params: { value?: unknown }) => formatChartMoney(params.value) }, data: report.comparison.manufacturing_groups.map((item) => Number(item.baseline_value)) },
+      { name: report.comparison.current_period, type: 'bar' as const, barMaxWidth: 32, label: { show: true, position: 'top' as const, color: palette.fg, fontFamily: 'IBM Plex Mono', fontSize: 9, formatter: (params: { value?: unknown }) => formatChartMoney(params.value) }, data: report.comparison.manufacturing_groups.map((item) => Number(item.current_value)) },
     ] : [],
   }), [report])
 
@@ -230,7 +235,7 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
     }
   }
 
-  return <div>
+  return <div className={report?.comparison ? 'report-detail report-detail-comparison' : 'report-detail report-detail-presentation'}>
     <PageHeader
       title={report ? `${report.part.part_description} ${report.report_style === 'period_comparison' ? '周期对比报表' : '展示型报表'}` : '成本报表'}
       actions={<>
@@ -240,35 +245,30 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
     />
     <RequestState loading={loading} error={error} empty={!artifact} onRetry={() => setReload((value) => value + 1)}>
       {report ? <>
-        {report.comparison ? <ComparisonMetrics metrics={report.comparison.headline_metrics} baselinePeriod={report.comparison.baseline_period} currentPeriod={report.comparison.current_period} /> :
-          <section className="grid grid-cols-5 border-b border-[var(--border-soft)] mobile-stack" aria-label="报表批次指标">
-            <ReportMetric label="批次数" value={String(report.batch_summary.batch_count)} />
-            <ReportMetric label="完工数量" value={formatDecimal(report.batch_summary.completed_quantity, 4)} />
-            <ReportMetric label="合格数量" value={formatDecimal(report.batch_summary.qualified_quantity, 4)} />
-            <ReportMetric label="不良数量" value={formatDecimal(report.batch_summary.defective_quantity, 4)} />
-            <ReportMetric label="合格率" value={formatRate(report.batch_summary.quality_rate)} />
-          </section>}
-        <section className="grid grid-cols-[minmax(0,1fr)_minmax(360px,.7fr)] border-b border-[var(--border-soft)] mobile-stack">
+        {report.comparison ? <ComparisonMetrics metrics={report.comparison.headline_metrics} baselinePeriod={report.comparison.baseline_period} currentPeriod={report.comparison.current_period} /> : <PresentationSummary report={report} />}
+        <section className="report-visual-row grid grid-cols-[minmax(0,1fr)_minmax(320px,.62fr)] border-b border-[var(--border-soft)] mobile-stack">
           <article className="min-w-0 border-r border-[var(--border-soft)]">
-            <div className="panel-head"><div><h2 className="section-title">{report.comparison ? '六类制造成本单位对比' : '批次料工费构成'}</h2><p className="meta mt-1">{report.comparison ? `${report.comparison.baseline_period} 基准期 / ${report.comparison.current_period} 目标期` : '各批次服务端单位成本'}</p></div></div>
-            <div className="p-4"><EChart build={report.comparison ? comparisonChart : batchChart} ariaLabel={report.comparison ? `${report.part.part_description} 六类制造成本周期对比` : `${report.part.part_description} 批次料工费构成`} /></div>
+            <div className="panel-head"><div><h2 className="section-title">{report.comparison ? '六类制造成本单位对比' : '批次料工费构成'}</h2><p className="meta mt-1">{report.comparison ? `${report.comparison.baseline_period} 基准期 / ${report.comparison.current_period} 目标期` : '按批次查看服务端单位成本构成'}</p></div></div>
+            <div className="report-chart-pad"><EChart build={report.comparison ? comparisonChart : batchChart} ariaLabel={report.comparison ? `${report.part.part_description} 六类制造成本周期对比` : `${report.part.part_description} 批次料工费构成`} /></div>
           </article>
-          <article className="p-5">
-            <div className="flex items-center gap-2"><GitBranch className="h-4 w-4" /><h2 className="section-title">分析结论</h2></div>
+          <article className="report-insight-panel p-5">
+            <div className="flex items-center gap-2"><GitBranch className="h-4 w-4 text-[var(--accent)]" /><h2 className="section-title">分析结论</h2></div>
             <p className="mt-4 whitespace-pre-wrap text-sm leading-7">{report.analysis_text}</p>
-            {report.insight_cards?.map((insight) => <div key={insight.label} className="mt-4 border-l-2 border-[var(--accent)] pl-3">
+            {report.insight_cards?.map((insight) => <div key={insight.label} className="report-insight mt-4 border-l-2 border-[var(--accent)] pl-3">
               <div className="flex items-center justify-between gap-3"><strong>{insight.label}</strong><span className="num">{insight.value}</span></div>
-              <p className="mt-1 text-xs leading-5 text-[var(--fg-2)]">{insight.description}</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--fg-2)]">{formatInsightDescription(insight.description, reportUnit)}</p>
             </div>)}
           </article>
         </section>
         {report.comparison ? <ComparisonTable metrics={report.comparison.manufacturing_groups} baselinePeriod={report.comparison.baseline_period} currentPeriod={report.comparison.current_period} /> : null}
         {report.comparison ? <div className="border-b border-[var(--border-soft)] bg-[var(--surface)] px-5 py-3"><p className="label">目标期成本结构 · {report.comparison.current_period}</p></div> : null}
-        <CostViewSummary
-          manufacturing={report.manufacturing_view}
-          materialLaborOverhead={report.material_labor_overhead_view}
-          variableFixed={report.variable_fixed_view}
-        />
+        <div className={!report.comparison ? 'report-cost-views' : undefined}>
+          <CostViewSummary
+            manufacturing={report.manufacturing_view}
+            materialLaborOverhead={report.material_labor_overhead_view}
+            variableFixed={report.variable_fixed_view}
+          />
+        </div>
         <section className="grid grid-cols-[minmax(0,1fr)_360px] border-t border-[var(--border-soft)] mobile-stack">
           <article className="min-w-0 border-r border-[var(--border-soft)]">
             <div className="panel-head"><div><h2 className="section-title">产成品批次</h2><p className="meta mt-1">进入批次可查看完整成本 DAG</p></div><Badge>{report.finished_batches.length + (report.comparison?.baseline_finished_batches.length ?? 0)} 个</Badge></div>
@@ -281,7 +281,7 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
                 <td><button className="font-mono text-[var(--accent)] hover:underline" onClick={() => navigate(`/cost-data/${encodeURIComponent(item.finished_batch_id)}?period=${item.period}&tab=summary`)}>{item.lot_number}</button></td>
                 <td className="meta">{formatDate(item.completion_time)}</td>
                 <td>{item.cost_center_name ?? item.cost_center_code ?? '—'}</td>
-                <td className="num text-right">{formatDecimal(item.qualified_quantity, 4)}</td>
+                <td className="num text-right">{formatQuantity(item.qualified_quantity)}</td>
                 <td className="num text-right">{formatRate(item.quality_rate)}</td>
                 <td className="num text-right">{formatPreciseMoney(item.manufacturing_view.total.unit_cost)}</td>
                 <td className="num text-right">{formatPreciseMoney(item.variable_fixed_view.total_cost_2.unit_cost)}</td>
@@ -307,8 +307,36 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
   </div>
 }
 
+function PresentationSummary({ report }: { report: NonNullable<ArtifactDetail['report_json']> }) {
+  const unit = report.finished_batches[0]?.unit ?? ''
+  return <section aria-label="展示型报表核心指标">
+    <div className="report-summary-heading"><div><p className="label">{report.period} · {report.part.part_number}</p><p className="report-summary-title">{report.part.part_description}</p></div><Badge tone="info">{report.batch_summary.batch_count} 个批次</Badge></div>
+    <div className="report-summary-grid">
+      {report.summary_cards.map((card) => <ReportMetric key={card.label} label={card.label} value={`${formatSummaryCardValue(card.value, card.unit)} ${card.unit}`} />)}
+      <ReportMetric label="完工数量" value={`${formatQuantity(report.batch_summary.completed_quantity)} ${unit}`} />
+      <ReportMetric label="不良数量" value={`${formatQuantity(report.batch_summary.defective_quantity)} ${unit}`} />
+      <ReportMetric label="合格率" value={formatRate(report.batch_summary.quality_rate)} />
+    </div>
+  </section>
+}
+
+export function formatChartMoney(value: unknown) {
+  return formatDecimal(Number(value), 2)
+}
+
+function formatSummaryCardValue(value: string | number, unit: string) {
+  if (unit.startsWith('元')) return formatDecimal(value, 2)
+  return formatQuantity(value)
+}
+
+function formatInsightDescription(description: string, unit: string) {
+  if (!unit) return description
+  const escapedUnit = unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return description.replace(new RegExp(`(-?\\d+(?:\\.\\d+)?)\\s+${escapedUnit}`, 'g'), (_, value: string) => `${formatQuantity(value)} ${unit}`)
+}
+
 function ReportMetric({ label, value }: { label: string; value: string }) {
-  return <article className="min-h-28 border-r border-[var(--border-soft)] p-4 last:border-r-0"><p className="label">{label}</p><p className="num mt-4 text-2xl">{value}</p></article>
+  return <article className="report-metric"><p className="label">{label}</p><p className="num mt-3 break-words text-xl font-semibold">{value}</p></article>
 }
 
 function ComparisonMetrics({ metrics, baselinePeriod, currentPeriod }: { metrics: ComparisonMetric[]; baselinePeriod: string; currentPeriod: string }) {

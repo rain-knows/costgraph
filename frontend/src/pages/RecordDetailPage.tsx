@@ -10,7 +10,7 @@ import {
 import { CostTree } from '../components/CostTree'
 import { CostViewSummary } from '../components/CostViews'
 import { Badge, PageHeader, RequestState, Segmented } from '../components/ui'
-import { formatDecimal, formatPreciseMoney } from '../lib/utils'
+import { formatDecimal, formatPreciseMoney, formatQuantity } from '../lib/utils'
 
 const detailTabs = ['summary', 'trace', 'sources'] as const
 type DetailTab = (typeof detailTabs)[number]
@@ -60,8 +60,8 @@ export function RecordDetailPage() {
         <section className="grid grid-cols-5 border-b border-[var(--border-soft)] mobile-stack" aria-label="批次成本指标">
           <Metric label="制造单位成本1" value={formatPreciseMoney(detail.manufacturing_view.total.unit_cost)} />
           <Metric label="合计单位成本2" value={formatPreciseMoney(detail.variable_fixed_view.total_cost_2.unit_cost)} />
-          <Metric label="完工数量" value={`${formatDecimal(detail.completed_quantity, 4)} ${detail.unit}`} />
-          <Metric label="合格 / 不良" value={`${formatDecimal(detail.qualified_quantity, 4)} / ${formatDecimal(detail.defective_quantity, 4)}`} />
+          <Metric label="完工数量" value={`${formatQuantity(detail.completed_quantity)} ${detail.unit}`} />
+          <Metric label="合格 / 不良" value={`${formatQuantity(detail.qualified_quantity)} / ${formatQuantity(detail.defective_quantity)}`} />
           <Metric label="合格率" value={formatRate(detail.quality_rate)} />
         </section>
         <BatchIdentity detail={detail} />
@@ -142,7 +142,7 @@ function NodeInspector({ node, records }: { node: CostTraceNode; records: CostTr
 function NodeMetric({ label, value, unit = false, quantity }: { label: string; value: string; unit?: boolean; quantity?: string }) {
   return <div className="min-h-20 border-r border-b border-[var(--border-soft)] p-3">
     <dt className="label">{label}</dt>
-    <dd className="num mt-2">{quantity ? `${formatDecimal(value, 4)} ${quantity}` : formatPreciseMoney(value, unit ? 2 : 0)}</dd>
+    <dd className="num mt-2">{quantity ? `${formatQuantity(value)} ${quantity}` : formatPreciseMoney(value, unit ? 2 : 0)}</dd>
   </div>
 }
 

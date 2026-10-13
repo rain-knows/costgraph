@@ -12,6 +12,6 @@ export const formatDecimal = (value: number | string, digits = 0) =>
   new Intl.NumberFormat('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value))
 
 export const formatQuantity = (value: number | string) =>
-  new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(Number(value))
+  new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Number(value))
 
 export const formatPercent = (value: number | string) => `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}%`
