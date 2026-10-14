@@ -7,6 +7,7 @@ const CostDataPage = lazy(() => import('./pages/CostDataPage').then((module) => 
 const RecordDetailPage = lazy(() => import('./pages/RecordDetailPage').then((module) => ({ default: module.RecordDetailPage })))
 const AiWorkspacePage = lazy(() => import('./pages/AiWorkspacePage').then((module) => ({ default: module.AiWorkspacePage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
+const DataAdminPage = lazy(() => import('./pages/DataAdminPage').then((module) => ({ default: module.DataAdminPage })))
 
 function PageLoading() {
   return <div className="grid min-h-[calc(100vh-48px)] place-items-center" role="status"><span className="label">正在加载工作区</span></div>
@@ -22,6 +23,8 @@ export default function App() {
       <Route path="/ai/:conversationId" element={<AiWorkspacePage />} />
       <Route path="/reports" element={<ReportsPage />} />
       <Route path="/reports/:artifactId" element={<ReportsPage />} />
+      <Route path="/data-admin" element={<DataAdminPage />} />
+      <Route path="/data-admin/:batchId" element={<DataAdminPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes></Suspense>

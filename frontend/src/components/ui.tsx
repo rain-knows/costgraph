@@ -70,12 +70,12 @@ export function PageHeader({ title, actions }: { title: string; actions?: ReactN
   )
 }
 
-export function RequestState({ loading, error, empty, onRetry, children }: { loading: boolean; error: string; empty: boolean; onRetry?: () => void; children: ReactNode }) {
-  if (!loading && !error && !empty) return <>{children}</>
-  const state = error ? 'error' : loading ? 'loading' : 'empty'
-  const Icon = error ? AlertCircle : loading ? LoaderCircle : Database
-  const title = error ? '数据读取失败' : loading ? '正在读取已发布数据' : '当前条件下没有数据'
-  const detail = error || (loading ? '正在校验数据范围并加载服务端结果。' : '调整期间或搜索条件后重试。')
+export function RequestState({ loading, error, empty, onRetry, children, unavailable = false, unauthorized = false }: { loading: boolean; error: string; empty: boolean; onRetry?: () => void; children: ReactNode; unavailable?: boolean; unauthorized?: boolean }) {
+  if (!loading && !error && !empty && !unavailable && !unauthorized) return <>{children}</>
+  const state = unauthorized ? 'unauthorized' : unavailable ? 'unavailable' : error ? 'error' : loading ? 'loading' : 'empty'
+  const Icon = error || unavailable || unauthorized ? AlertCircle : loading ? LoaderCircle : Database
+  const title = unauthorized ? '无权访问数据治理' : unavailable ? '数据治理服务暂不可用' : error ? '数据读取失败' : loading ? '正在读取服务端数据' : '当前条件下没有数据'
+  const detail = unauthorized ? '当前主体没有 data_management.read 权限。' : unavailable ? '数据库当前不可用，请稍后重试。' : error || (loading ? '正在读取服务端只读数据。' : '当前没有符合条件的治理记录。')
   return <section className="grid min-h-[420px] place-items-center px-6" data-state={state} role={error ? 'alert' : 'status'}>
     <div className="max-w-md text-center">
       <Icon className={cn('mx-auto mb-4 h-8 w-8 text-[var(--fg-2)]', loading && 'animate-spin')} aria-hidden="true" />

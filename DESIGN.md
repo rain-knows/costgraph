@@ -70,7 +70,9 @@ floating section card.
   auditable and use the same IBM-inspired surfaces and focus states.
 - Every data surface implements loading, empty, error, unavailable, and
   unauthorized states without shifting fixed toolbars, table columns, charts,
-  or status regions.
+  or status regions. The admin-only data governance surface remains read-only,
+  uses dense horizontally scrollable tables, and never renders upload, publish,
+  rollback, delete, edit, or raw-payload controls.
 - Agent progress is driven by the canonical Runtime lifecycle and ordered SSE
   events. Animation may clarify active progress but must stop for terminal
   states and respect `prefers-reduced-motion`.

@@ -12,6 +12,7 @@ export function buildBreadcrumbs(pathname: string, period: string): BreadcrumbIt
     'cost-data': { label: '成本数据', detailLabel: '批次' },
     ai: { label: 'AI 分析', detailLabel: '会话' },
     reports: { label: '报表中心', detailLabel: '报表' },
+    'data-admin': { label: '数据治理', detailLabel: '批次' },
   }
   const matched = sectionMap[section]
   if (!matched) return [overview, { label: '当前页面' }]

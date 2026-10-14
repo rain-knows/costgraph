@@ -7,7 +7,7 @@ it('renders loading, empty, and permission error states with retry', async () =>
   const onRetry = vi.fn()
   const view = render(<RequestState loading error="" empty={false}>content</RequestState>)
 
-  expect(screen.getByText('正在读取已发布数据')).toBeInTheDocument()
+  expect(screen.getByText('正在读取服务端数据')).toBeInTheDocument()
 
   view.rerender(<RequestState loading={false} error="" empty>content</RequestState>)
   expect(screen.getByText('当前条件下没有数据')).toBeInTheDocument()

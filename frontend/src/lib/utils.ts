@@ -15,3 +15,5 @@ export const formatQuantity = (value: number | string) =>
   new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Number(value))
 
 export const formatPercent = (value: number | string) => `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}%`
+
+export const formatDateTime = (value: string | null | undefined) => value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'
