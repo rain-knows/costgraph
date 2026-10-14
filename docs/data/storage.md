@@ -25,6 +25,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 ## 读取与所有权边界
 
 - 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产成品零件和期间，并应用服务端 `ExecutionContext.data_scope`。
+- 数据治理只读 Repository 复用同一 PostgreSQL 工厂；批次和错误按租户隔离，发布质量统计绑定当前 published batch、当前规则版本和 DataScope，不新增表、迁移或本地适配器。
 - 会话、Turn、消息、Run、Trace 和 Artifact 的业务查询必须匹配 `tenant_id + principal_id`。
 - Worker 只领取数据库中已固化可信 owner 快照的 Run，不从客户端重新解释主体。
 - `raw_payload`/JSONB 只做导入追溯，不直接参与金额计算。累计成本、单位成本、占比和三视图由同一确定性服务在发布时计算，并写入绑定快照与规则版本的只读投影；事实表不保存派生值，投影不能成为事实或安全边界。

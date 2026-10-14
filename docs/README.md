@@ -18,6 +18,7 @@
 | 导入发布、质量、隔离和保留 | [数据/治理与质量](data/governance.md) | `data/governance.md` |
 | 会话、Run、SSE、Artifact 和错误 | [API/Agent 契约](api/agent-contract.md) | `api/agent-contract.md` |
 | 总览、产成品批次列表与成本追溯详情 | [API/成本数据契约](api/cost-data-contract.md) | `api/cost-data-contract.md` |
+| 数据治理、批次质量和发布快照只读接口 | [API/数据治理契约](api/data-admin-contract.md) | `api/data-admin-contract.md` |
 | 启动、迁移、导入、验证和排障 | [运行手册](operations/runbook.md) | `operations/runbook.md` |
 | 如何维护文档与同步规则 | [文档治理](governance/documentation.md) | `governance/documentation.md`、必要时根 `AGENTS.md` |
 | 本次迁移阶段、状态和证据 | [迁移执行记录](plans/agent-demo-to-costgraph.md) | 仅在状态或证据变化时更新 |

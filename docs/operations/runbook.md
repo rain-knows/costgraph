@@ -11,6 +11,7 @@
 
 ```dotenv
 COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
+AGENT_PRINCIPAL_ROLES=user
 ```
 
 本地非敏感配置写入 `backend/.env`，环境变量优先。不要打印或提交连接密码和 API Key。
@@ -60,6 +61,10 @@ backend\.venv\Scripts\python.exe backend\scripts\benchmark_cost_queries.py
 脚本预热后分别执行总览、默认列表、单位成本排序、过滤列表和详情各 10 次；每项必须满足 `p95_seconds < 1.0` 且 `max_queries <= 2`（包含 `SET LOCAL`）。
 
 格式、关系和 48 项代码见[成本核算格式](../data/cost-accounting-format.md)。
+
+## 数据治理面板验证
+
+默认主体角色为 `user`，因此不会获得数据治理导航。升级到 user/admin 角色模型时，必须检查并显式更新本地 `backend/.env`、服务环境变量与部署 Secret 中的 `AGENT_PRINCIPAL_ROLES`；旧值 `system_viewer/cost_analyst/agent_admin` 会导致主体构造失败。普通主体配置 `user`，需要查看面板的部署配置 `admin`，修改后重启 API。需要验证只读管理面板时访问 `/data-admin?period=2026-06`，确认 `/api/me` 返回 `data_management.read`，并确认 `/api/data-admin/published`、`/quality` 和批次端点只读返回当前租户数据。数据库不可用或当前规则投影不完整时应看到 `503/database_unavailable`，而不是空数据。
 
 ## 启动与健康
 

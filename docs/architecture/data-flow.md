@@ -29,6 +29,20 @@ HTTP query -> server principal/tenant/data scope
 
 追溯图以最终产成品事件为根向上返回事件节点、投入边和逐笔来源记录。树形 UI 遇到共享上游只显示引用标识；图中的一个事件仍只计算一次，不能因投影成树而重复累计。
 
+## 数据治理只读查询
+
+```text
+React 数据治理页面
+  -> /api/me 权限摘要
+  -> admin + data_management.read policy gate
+  -> /api/data-admin
+     -> tenant-scoped data_load_batches/data_load_errors
+     -> current published batch + current-rule projection integrity gate
+     -> DataScope-scoped fact/projection counts
+```
+
+数据治理接口只读，不触发导入、发布、回滚或重算；错误明细不返回 `raw_payload`，来源文件仅暴露 basename。跨租户批次按未找到处理。发布统计缺少当前规则版本投影、投影为空或规则混合时返回数据库不可用错误，不返回部分可信质量数据。
+
 ## Agent 查询与产出
 
 ```text

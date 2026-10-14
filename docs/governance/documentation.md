@@ -13,6 +13,7 @@
 | 模块、Agent 图、责任边界 | `architecture/system.md`、`architecture/data-flow.md` |
 | Runtime 生命周期、预算、租约、恢复 | `architecture/runtime.md` |
 | 能力、策略、主体与数据范围 | `architecture/harness.md` |
+| 数据治理 API、admin 权限和只读页面 | `api/data-admin-contract.md`、`architecture/system.md`、`architecture/data-flow.md`、`data/governance.md` |
 | Tool/Provider 注册、Schema、重试 | `architecture/tool-provider.md` |
 | Event、Trace、Replay、Eval、脱敏 | `architecture/event-trace-replay.md` |
 | Repository、数据库连接、存储生命周期 | `data/storage.md`、`architecture/data-flow.md` |
@@ -20,6 +21,7 @@
 | 导入校验、发布、隔离、保留 | `data/governance.md`、`data/cost-accounting-format.md`（卷积、舍入和三视图规则） |
 | 会话、Run、SSE、Artifact、错误 | `api/agent-contract.md` |
 | 成本总览、完工批次列表、追溯详情契约 | `api/cost-data-contract.md` |
+| 数据治理批次、错误、发布快照和权限摘要 | `api/data-admin-contract.md` |
 | 启动、迁移、导入、检查命令 | `operations/runbook.md` |
 | token、主题、布局与组件视觉规则 | 根 `DESIGN.md` |
 | 文档规则、索引或 Agent 规则 | `docs/README.md`、本文件、根 `AGENTS.md` |

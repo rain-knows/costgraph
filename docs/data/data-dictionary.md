@@ -121,6 +121,10 @@
 
 `artifact_id` 为主键，`artifact_type` 固定 `cost_report`。owner 为 `tenant_id + principal_id`；关联字段为 conversation/turn/message/run ID；展示字段为会话标题、`part_id/part_number/part_description` 和目标期间；内容字段为 `report_json/report_sha256/data_snapshot_id`，其中 `report_json` 只接受当前 `CostReportV3`，周期对比基准期保存在 `comparison.baseline_period`；版本字段为 report/rule/prompt/code version；`created_at/deleted_at` 管理软删除生命周期。租户+Run 和租户+消息唯一，并按 owner+生命周期+时间及 owner+零件+期间建索引。
 
+## 数据治理只读视图
+
+数据治理 API 复用 `data_load_batches` 与 `data_load_errors` 的已有字段，并从 `parts`、`cost_events`、`cost_event_inputs`、`cost_records` 和 `finished_batch_cost_projections` 聚合租户/当前发布快照统计。该视图不读取 `raw_payload`；`source_file` 只返回 basename。没有新增表、字段或迁移。
+
 ## 关系
 
 ```text

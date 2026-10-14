@@ -27,6 +27,8 @@ React/Vite
   -> FastAPI read-only cost-data API
      -> owner/data-scope policy -> published CostRepository cost projection
      -> deterministic DAG validation, convolution and aggregation
+  -> FastAPI read-only data-admin API (admin/data_management.read)
+     -> tenant-scoped batch metadata, error summaries and published quality snapshot
 ```
 
 样例 JSON 只能由导入脚本写入新的 CostGraph 数据库；应用请求不以 JSON、SQLite 或内存产出作为运行时后端，也不读取迁移源数据库。当前规范样例使用汽车装饰件工厂数据，黄金批次通过原料购置、注塑成型、表面包覆和总成装配事件形成多层实际投入图。

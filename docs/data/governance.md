@@ -39,6 +39,12 @@ source records -> normalized snapshot hash -> validating batch
 - Audit Trace 只保存允许的运行元数据、usage、策略快照和规范化哈希；敏感内容边界见 [Event、Trace、Replay 与 Eval](../architecture/event-trace-replay.md)。
 - 终态 checkpoint 默认按服务端保留期清理，活跃 Run 不清理；删除终态会话时同步清除关联 checkpoint。
 
+## 只读数据治理面板
+
+`/api/data-admin` 与前端“数据治理”页面只向拥有 `data_management.read` 的 `admin` 主体开放。它读取已有批次元数据、脱敏错误明细、当前 published 批次和基础质量统计，不提供上传、发布、回滚、删除、编辑或重算。批次元数据按租户隔离；发布统计和四类事实/投影计数还应用服务端 `DataScope`。错误接口不返回 `raw_payload`，来源文件只展示 basename。
+
+发布质量门禁必须同时满足当前规则版本、非空投影、单一投影批次和统一 `rule_version`；否则服务端返回 `503/database_unavailable`，不以不完整统计伪装质量状态。由于事实表 upsert 会保留历史批次元数据，本面板不把历史批次描述为可回滚快照。
+
 ## 当前不提供
 
-完整身份认证、数据库 RLS、库存结存、返工分支、副产品、导入审批 UI、质量看板、自动备份和生产恢复演练不属于当前仓库能力。当前 principal 由服务端可信配置注入，不能描述为完整认证系统。
+完整身份认证、数据库 RLS、库存结存、返工分支、副产品、导入审批 UI、数据治理写操作、自动备份和生产恢复演练不属于当前仓库能力。当前 principal 由服务端可信配置注入，不能描述为完整认证系统。

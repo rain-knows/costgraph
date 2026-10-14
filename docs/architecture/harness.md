@@ -4,6 +4,8 @@
 
 `AgentHarness` 是无状态策略与工具控制器，负责规范化请求、构造最小上下文、计算能力交集、暴露允许的工具并在每次调用前重新校验。它不拥有 LangGraph State、Run 持久化、会话事务或金额公式。
 
+服务端主体角色固定为 `user` 与 `admin`。`user` 拥有普通只读能力，`admin` 额外拥有业务权限 `data_management.read`。数据治理 Router 使用独立 permission gate，不注册为 Agent tool；`/api/me` 只返回有效能力和角色授权权限摘要，不暴露租户标识或配置秘密。空、重复或未知角色配置会在主体构造时失败。
+
 有效能力固定为：
 
 ```text
@@ -36,4 +38,6 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 - 未授权映射为稳定的 `tool_access_denied`；未知工具或输入/输出契约错误映射为 `tool_validation_error`。
 - 公开错误摘要不包含完整参数、SQL、路径、模型正文、密钥或成本来源记录 ID。业务成本详情的 `CostTraceGraph.records` 只在授权的成本详情响应中返回，不能进入 Agent 公开事件或模型 Trace。
 
-依据：`backend/app/agent/harness.py`、`backend/app/agent/context.py`、`backend/app/agent/capabilities.py`、`backend/app/domain/authorization.py`。
+数据治理查询由服务端固定请求 `data_management.read`，在服务入口重新计算授权；从 checkpoint 恢复执行上下文时只接受与当前服务端主体一致的主体和 requested 集合，重新计算角色授权、server allowlist 和 DataScope；主体、租户或角色不一致时 fail-closed，不能通过伪造 effective 字段扩大范围。
+
+依据：`backend/app/agent/harness.py`、`backend/app/agent/context.py`、`backend/app/agent/capabilities.py`、`backend/app/domain/authorization.py`、`backend/app/services/data_admin_service.py`。

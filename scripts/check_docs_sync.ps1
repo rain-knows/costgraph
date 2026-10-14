@@ -17,6 +17,7 @@ $requiredDocs = @(
     "data/governance.md",
     "api/agent-contract.md",
     "api/cost-data-contract.md",
+    "api/data-admin-contract.md",
     "operations/runbook.md",
     "governance/documentation.md",
     "plans/agent-demo-to-costgraph.md"
@@ -261,6 +262,15 @@ Assert-ChangedDocs @(
     '^backend/app/services/cost_data_query_service\.py$',
     '^frontend/src/api/costData\.ts$'
 ) @('docs/api/cost-data-contract.md') "成本数据 API 契约"
+
+Assert-ChangedDocs @(
+    '^backend/app/api/(data_admin|me)\.py$',
+    '^backend/app/schemas/data_admin\.py$',
+    '^backend/app/services/data_admin_service\.py$',
+    '^backend/app/repositories/(data_admin_repository|postgres_data_admin_repository)\.py$',
+    '^frontend/src/api/(dataAdmin|me)\.ts$',
+    '^frontend/src/pages/DataAdminPage\.tsx$'
+) @('docs/api/data-admin-contract.md', 'docs/architecture/system.md', 'docs/architecture/data-flow.md', 'docs/architecture/harness.md', 'docs/data/governance.md', 'docs/data/data-dictionary.md', 'docs/operations/runbook.md', 'docs/governance/documentation.md') "数据治理 API、权限或页面"
 
 Assert-ChangedDocs @(
     '^backend/app/settings\.py$',
