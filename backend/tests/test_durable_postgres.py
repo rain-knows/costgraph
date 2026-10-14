@@ -59,12 +59,12 @@ def test_postgres_worker_claim_checkpoint_recovery_and_atomic_finalize(
     owner = ExecutionPrincipal(
         principal_id=owner_id,
         tenant_id=tenant_id,
-        roles=("cost_analyst",),
+        roles=("user",),
     )
     intruder = ExecutionPrincipal(
         principal_id=f"durable-intruder-{uuid4().hex}",
         tenant_id=tenant_id,
-        roles=("cost_analyst",),
+        roles=("user",),
     )
     conversations = PostgresConversationRepository()
     repository = PostgresRunRepository(settings=durable_settings)
@@ -340,12 +340,12 @@ def test_durable_run_api_sse_cancel_owner_isolation_and_readiness(
     owner = ExecutionPrincipal(
         principal_id="api-owner",
         tenant_id=tenant_id,
-        roles=("cost_analyst",),
+        roles=("user",),
     )
     intruder = ExecutionPrincipal(
         principal_id="api-intruder",
         tenant_id=tenant_id,
-        roles=("cost_analyst",),
+        roles=("user",),
     )
     conversations = PostgresConversationRepository()
     repository = PostgresRunRepository(settings=durable_settings)
@@ -478,7 +478,7 @@ def test_runtime_postgres_budget_events_and_fixed_protocol_version(
     owner = ExecutionPrincipal(
         principal_id="runtime-owner",
         tenant_id=tenant_id,
-        roles=("cost_analyst",),
+        roles=("user",),
     )
     conversations = PostgresConversationRepository()
     repository = PostgresRunRepository(settings=durable_settings)

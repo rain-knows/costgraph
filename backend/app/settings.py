@@ -29,7 +29,7 @@ class AppSettings(BaseSettings):
 
     agent_principal_id: str = "local-costgraph-user"
     agent_tenant_id: str = "local-costgraph-tenant"
-    agent_principal_roles: str = "cost_analyst"
+    agent_principal_roles: str = "user"
     agent_server_allowed_capabilities: str = (
         "system_help,cost_calculation,report_generation"
     )

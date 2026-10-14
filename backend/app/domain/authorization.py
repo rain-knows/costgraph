@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent.capabilities import (
     ALL_CAPABILITY_IDS,
+    CAPABILITY_REGISTRY,
     CapabilityId,
     RoutingMode,
     normalize_capabilities,
@@ -13,13 +15,33 @@ from app.agent.capabilities import (
 )
 from app.settings import get_settings
 
-RoleId = Literal["system_viewer", "cost_analyst", "agent_admin"]
+RoleId = Literal["user", "admin"]
+PermissionId = Literal["data_management.read"]
 
 ROLE_CAPABILITIES: dict[RoleId, tuple[CapabilityId, ...]] = {
-    "system_viewer": ("system_help",),
-    "cost_analyst": ("system_help", "cost_calculation", "report_generation"),
-    "agent_admin": ALL_CAPABILITY_IDS,
+    "user": ("system_help", "cost_calculation", "report_generation"),
+    "admin": ("system_help", "cost_calculation", "report_generation"),
 }
+ROLE_PERMISSIONS: dict[RoleId, tuple[PermissionId, ...]] = {
+    "user": (),
+    "admin": ("data_management.read",),
+}
+ALL_PERMISSION_IDS: tuple[PermissionId, ...] = ("data_management.read",)
+
+
+def _validate_capability_role_metadata() -> None:
+    for capability_id, spec in CAPABILITY_REGISTRY.items():
+        metadata_roles = set(spec.required_roles)
+        configured_roles = {
+            role
+            for role, capabilities in ROLE_CAPABILITIES.items()
+            if capability_id in capabilities
+        }
+        if metadata_roles != configured_roles:
+            raise RuntimeError(f"能力角色元数据与授权映射不一致：{capability_id}")
+
+
+_validate_capability_role_metadata()
 
 
 class ExecutionPrincipal(BaseModel):
@@ -28,6 +50,14 @@ class ExecutionPrincipal(BaseModel):
     principal_id: str = Field(min_length=1)
     tenant_id: str = Field(min_length=1)
     roles: tuple[RoleId, ...]
+
+    @model_validator(mode="after")
+    def validate_roles(self) -> ExecutionPrincipal:
+        if not self.roles:
+            raise ValueError("执行主体至少需要一个角色")
+        if len(set(self.roles)) != len(self.roles):
+            raise ValueError("执行主体角色不能重复")
+        return self
 
 
 class DataScope(BaseModel):
@@ -58,9 +88,13 @@ class ExecutionContext(BaseModel):
 
     principal: ExecutionPrincipal
     requested_capabilities: tuple[CapabilityId, ...]
+    requested_permissions: tuple[PermissionId, ...]
     authorized_capabilities: tuple[CapabilityId, ...]
     server_allowed_capabilities: tuple[CapabilityId, ...]
     effective_capabilities: tuple[CapabilityId, ...]
+    authorized_permissions: tuple[PermissionId, ...]
+    server_allowed_permissions: tuple[PermissionId, ...]
+    effective_permissions: tuple[PermissionId, ...]
     data_scope: DataScope
 
     def has_capability(self, capability: CapabilityId) -> bool:
@@ -69,6 +103,13 @@ class ExecutionContext(BaseModel):
     def require_capability(self, capability: CapabilityId) -> None:
         if not self.has_capability(capability):
             raise PermissionError(f"执行主体未获授权使用能力：{capability}")
+
+    def has_permission(self, permission: PermissionId) -> bool:
+        return permission in self.effective_permissions
+
+    def require_permission(self, permission: PermissionId) -> None:
+        if not self.has_permission(permission):
+            raise PermissionError(f"执行主体未获授权使用权限：{permission}")
 
     def require_cost_scope(self, part_id: str, period: str | None = None) -> None:
         self.require_capability("cost_calculation")
@@ -96,20 +137,35 @@ class ExecutionContext(BaseModel):
             "authorized_capabilities": list(self.authorized_capabilities),
             "server_allowed_capabilities": list(self.server_allowed_capabilities),
             "effective_capabilities": list(self.effective_capabilities),
+            "requested_permissions": list(self.requested_permissions),
+            "authorized_permissions": list(self.authorized_permissions),
+            "server_allowed_permissions": list(self.server_allowed_permissions),
+            "effective_permissions": list(self.effective_permissions),
             "data_scope": self.data_scope.model_dump(mode="json"),
         }
 
 
-def get_server_principal() -> ExecutionPrincipal:
-    settings = get_settings()
-    raw_roles = settings.csv_values("agent_principal_roles")
-    unknown_roles = sorted(set(raw_roles) - set(ROLE_CAPABILITIES))
+def _configured_roles(raw_value: str) -> tuple[RoleId, ...]:
+    raw_items = raw_value.split(",")
+    roles = [item.strip() for item in raw_items]
+    if not raw_value.strip() or any(not item for item in roles):
+        raise RuntimeError("AGENT_PRINCIPAL_ROLES 必须配置一个或多个非空角色")
+    unknown_roles = sorted(set(roles) - set(ROLE_CAPABILITIES))
     if unknown_roles:
         raise RuntimeError(f"未知服务端 Agent 角色：{', '.join(unknown_roles)}")
+    if len(set(roles)) != len(roles):
+        raise RuntimeError("AGENT_PRINCIPAL_ROLES 不能包含重复角色")
+    return tuple(roles)  # type: ignore[return-value]
+
+
+def get_server_principal() -> ExecutionPrincipal:
+    settings = get_settings()
     return ExecutionPrincipal(
         principal_id=settings.agent_principal_id,
         tenant_id=settings.agent_tenant_id,
-        roles=tuple(raw_roles),
+        roles=_configured_roles(
+            os.environ.get("AGENT_PRINCIPAL_ROLES", settings.agent_principal_roles)
+        ),
     )
 
 
@@ -128,6 +184,14 @@ def _server_allowed_capabilities() -> list[CapabilityId]:
     )
 
 
+def _authorized_permissions(principal: ExecutionPrincipal) -> list[PermissionId]:
+    authorized: list[PermissionId] = []
+    for permission in ALL_PERMISSION_IDS:
+        if any(permission in ROLE_PERMISSIONS[role] for role in principal.roles):
+            authorized.append(permission)
+    return authorized
+
+
 def _data_scope() -> DataScope:
     settings = get_settings()
     return DataScope(
@@ -138,14 +202,11 @@ def _data_scope() -> DataScope:
     )
 
 
-def build_execution_context(
-    routing_mode: RoutingMode,
-    enabled_capabilities: list[str] | None = None,
-    *,
-    principal: ExecutionPrincipal | None = None,
+def _build_context_from_requests(
+    principal: ExecutionPrincipal,
+    requested: list[CapabilityId],
+    requested_permissions: list[str] | None,
 ) -> ExecutionContext:
-    principal = principal or get_server_principal()
-    requested = normalize_capabilities(routing_mode, enabled_capabilities)
     authorized = _authorized_capabilities(principal)
     server_allowed = _server_allowed_capabilities()
     effective = [
@@ -155,19 +216,82 @@ def build_execution_context(
         and capability in authorized
         and capability in server_allowed
     ]
+    requested_permission_values = list(requested_permissions or [])
+    unknown_permissions = sorted(
+        set(requested_permission_values) - set(ALL_PERMISSION_IDS)
+    )
+    if unknown_permissions:
+        raise ValueError(f"未知权限：{', '.join(unknown_permissions)}")
+    requested_permission_ids = [
+        permission
+        for permission in ALL_PERMISSION_IDS
+        if permission in requested_permission_values
+    ]
+    authorized_permissions = _authorized_permissions(principal)
+    server_allowed_permissions = list(ALL_PERMISSION_IDS)
+    effective_permissions = [
+        permission
+        for permission in ALL_PERMISSION_IDS
+        if permission in requested_permission_ids
+        and permission in authorized_permissions
+        and permission in server_allowed_permissions
+    ]
     if "report_generation" in effective and "cost_calculation" not in effective:
         effective.remove("report_generation")
     return ExecutionContext(
         principal=principal,
         requested_capabilities=tuple(requested),
+        requested_permissions=tuple(requested_permission_ids),
         authorized_capabilities=tuple(authorized),
         server_allowed_capabilities=tuple(server_allowed),
         effective_capabilities=tuple(effective),
+        authorized_permissions=tuple(authorized_permissions),
+        server_allowed_permissions=tuple(server_allowed_permissions),
+        effective_permissions=tuple(effective_permissions),
         data_scope=_data_scope(),
     )
 
 
+def build_execution_context(
+    routing_mode: RoutingMode,
+    enabled_capabilities: list[str] | None = None,
+    *,
+    requested_permissions: list[str] | None = None,
+    principal: ExecutionPrincipal | None = None,
+) -> ExecutionContext:
+    owner = principal or get_server_principal()
+    requested = normalize_capabilities(routing_mode, enabled_capabilities)
+    return _build_context_from_requests(owner, requested, requested_permissions)
+
+
 def execution_context_from_state(value: object) -> ExecutionContext:
-    if isinstance(value, ExecutionContext):
-        return value
-    return ExecutionContext.model_validate(value)
+    """Rebuild authorization from persisted requests, never trust derived fields.
+
+    Serialized checkpoint state is an untrusted input boundary: its principal
+    must match the current server principal, and its effective grants are never
+    trusted. An in-process ExecutionContext is already built from a validated
+    principal, so it is re-derived without repeating the serialized-state check.
+    """
+    is_model = isinstance(value, ExecutionContext)
+    raw = value.model_dump(mode="python") if is_model else value
+    if not isinstance(raw, dict):
+        raise TypeError("execution_context 状态格式无效")
+    principal = ExecutionPrincipal.model_validate(raw.get("principal"))
+    if not is_model:
+        server_principal = get_server_principal()
+        if (
+            principal.principal_id,
+            principal.tenant_id,
+            principal.roles,
+        ) != (
+            server_principal.principal_id,
+            server_principal.tenant_id,
+            server_principal.roles,
+        ):
+            raise PermissionError("主体与当前服务端主体不一致")
+    requested = validate_capability_ids(list(raw.get("requested_capabilities") or []))
+    return _build_context_from_requests(
+        principal,
+        requested,
+        list(raw.get("requested_permissions") or []),
+    )

@@ -14,7 +14,7 @@ from evaluation.fixture_cost_repository import CostFixtureRepository
 PRINCIPAL = ExecutionPrincipal(
     principal_id="test-user",
     tenant_id="test-tenant",
-    roles=("cost_analyst",),
+    roles=("user",),
 )
 
 
@@ -143,14 +143,19 @@ def test_cost_data_accepts_a_valid_ratio_that_rounds_to_zero() -> None:
     assert edge["allocated_costs"]["total_amount"] == "0.00"
 
 
-def test_cost_data_rejects_invalid_period_and_unauthorized_role() -> None:
+def test_user_and_admin_retain_cost_access_and_invalid_period_is_rejected() -> None:
     invalid = _client().get("/api/cost-data/overview?period=2026-13")
-    viewer = ExecutionPrincipal(
-        principal_id="viewer", tenant_id="test-tenant", roles=("system_viewer",)
-    )
-    denied = _client(viewer).get("/api/cost-data/overview?period=2026-06")
+    user = _client(
+        ExecutionPrincipal(
+            principal_id="viewer", tenant_id="test-tenant", roles=("user",)
+        )
+    ).get("/api/cost-data/overview?period=2026-06")
+    admin = _client(
+        ExecutionPrincipal(
+            principal_id="admin", tenant_id="test-tenant", roles=("admin",)
+        )
+    ).get("/api/cost-data/overview?period=2026-06")
 
     assert invalid.status_code == 422
-    # A principal without cost_calculation receives a stable authorization error.
-    assert denied.status_code == 403
-    assert denied.json()["detail"]["code"] == "cost_data_access_denied"
+    assert user.status_code == 200
+    assert admin.status_code == 200
