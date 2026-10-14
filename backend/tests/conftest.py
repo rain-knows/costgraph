@@ -8,6 +8,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("DEEPSEEK_API_KEY", "")
 os.environ["AGENT_PRINCIPAL_ROLES"] = "user"
 os.environ.setdefault(
     "AGENT_SERVER_ALLOWED_CAPABILITIES",
