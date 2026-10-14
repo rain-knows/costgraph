@@ -15,6 +15,7 @@ def domain_status_code(code: str) -> int:
         "artifact_not_found",
         "run_not_found",
         "cost_data_not_found",
+        "data_admin_batch_not_found",
     }:
         return 404
     if code in {

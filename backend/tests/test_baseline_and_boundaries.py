@@ -5,6 +5,7 @@ from app.main import app
 from app.repositories.artifact_repository import get_artifact_repository
 from app.repositories.conversation_repository import get_conversation_repository
 from app.repositories.cost_repository import get_cost_repository
+from app.repositories.data_admin_repository import get_data_admin_repository
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -53,6 +54,12 @@ def test_production_app_exposes_only_canonical_api_paths() -> None:
         "/api/cost-data/overview",
         "/api/cost-data/finished-batches",
         "/api/cost-data/finished-batches/{finished_batch_id}",
+        "/api/data-admin/batches",
+        "/api/data-admin/batches/{batch_id}",
+        "/api/data-admin/batches/{batch_id}/errors",
+        "/api/data-admin/published",
+        "/api/data-admin/quality",
+        "/api/me",
         "/api/health",
         "/api/livez",
         "/api/readyz",
@@ -78,8 +85,13 @@ def test_repository_factories_use_postgresql_implementations(monkeypatch) -> Non
         "app.repositories.postgres_artifact_repository.get_session_factory",
         lambda: session_factory,
     )
+    monkeypatch.setattr(
+        "app.repositories.postgres_data_admin_repository.get_session_factory",
+        lambda: session_factory,
+    )
     assert type(get_cost_repository()).__name__ == "PostgresCostRepository"
     assert type(get_conversation_repository()).__name__ == (
         "PostgresConversationRepository"
     )
     assert type(get_artifact_repository()).__name__ == "PostgresArtifactRepository"
+    assert type(get_data_admin_repository()).__name__ == "PostgresDataAdminRepository"

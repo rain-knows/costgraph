@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from app.api.artifacts import router as artifacts_router
 from app.api.conversations import router as conversations_router
 from app.api.cost_data import router as cost_data_router
+from app.api.data_admin import router as data_admin_router
+from app.api.me import router as me_router
 from app.api.runtime_runs import router as runtime_runs_router
 from app.services.health_service import health_snapshot, readiness_snapshot
 from app.settings import AppSettings, get_settings
@@ -137,6 +139,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return JSONResponse(status_code=200 if ready else 503, content=snapshot)
 
     api.include_router(artifacts_router, prefix="/api/artifacts", tags=["artifacts"])
+    api.include_router(data_admin_router, prefix="/api/data-admin", tags=["data-admin"])
+    api.include_router(me_router, prefix="/api/me", tags=["me"])
     api.include_router(cost_data_router, prefix="/api/cost-data", tags=["cost-data"])
     api.include_router(
         runtime_runs_router, prefix="/api/v2/conversations", tags=["runtime"]
