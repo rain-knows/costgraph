@@ -32,8 +32,17 @@ class PostgresCostRepository:
 
     @staticmethod
     def _published_batch(tenant_id: str):
+        """当前租户的已发布快照；后续所有投影查询必须按它显式定界。
+
+        ``finished_batch_cost_projections`` 带有 ``batch_id`` 列但不引用成本
+        事件，因此任何 join 都必须额外带 ``batch_id`` 谓词，否则会跨批次命中。
+        """
         return (
-            select(DataLoadBatch.batch_id, DataLoadBatch.calculation_rule_version)
+            select(
+                DataLoadBatch.batch_id,
+                DataLoadBatch.tenant_id,
+                DataLoadBatch.calculation_rule_version,
+            )
             .where(
                 DataLoadBatch.tenant_id == tenant_id,
                 DataLoadBatch.status == "published",
@@ -48,7 +57,13 @@ class PostgresCostRepository:
         batch = self._published_batch(owner.tenant_id)
         statement = (
             select(Part)
-            .join(batch, Part.batch_id == batch.c.batch_id)
+            .join(
+                batch,
+                and_(
+                    Part.tenant_id == batch.c.tenant_id,
+                    Part.batch_id == batch.c.batch_id,
+                ),
+            )
             .where(Part.tenant_id == owner.tenant_id)
             .order_by(Part.part_id)
         )
@@ -102,7 +117,7 @@ class PostgresCostRepository:
         batch = self._published_batch(owner.tenant_id)
         projection = FinishedBatchCostProjection
         join_condition = and_(
-            projection.tenant_id == owner.tenant_id,
+            projection.tenant_id == batch.c.tenant_id,
             projection.batch_id == batch.c.batch_id,
             projection.period == period,
         )
@@ -162,7 +177,13 @@ class PostgresCostRepository:
                 projection.completion_time.label("completion_time"),
                 projection.total_unit_cost.label("total_unit_cost"),
             )
-            .join(batch, projection.batch_id == batch.c.batch_id)
+            .join(
+                batch,
+                and_(
+                    projection.tenant_id == batch.c.tenant_id,
+                    projection.batch_id == batch.c.batch_id,
+                ),
+            )
             .where(projection.tenant_id == owner.tenant_id, projection.period == period)
         )
         allowed = tuple(execution_context.data_scope.allowed_part_ids)
@@ -213,7 +234,7 @@ class PostgresCostRepository:
         batch = self._published_batch(owner.tenant_id)
         projection = FinishedBatchCostProjection
         join_condition = and_(
-            projection.tenant_id == owner.tenant_id,
+            projection.tenant_id == batch.c.tenant_id,
             projection.batch_id == batch.c.batch_id,
             projection.finished_batch_id == finished_batch_id,
         )
@@ -246,7 +267,13 @@ class PostgresCostRepository:
         projection = FinishedBatchCostProjection
         rows_cte = (
             select(projection.summary_json, projection.trace_json)
-            .join(batch, projection.batch_id == batch.c.batch_id)
+            .join(
+                batch,
+                and_(
+                    projection.tenant_id == batch.c.tenant_id,
+                    projection.batch_id == batch.c.batch_id,
+                ),
+            )
             .where(
                 projection.tenant_id == owner.tenant_id,
                 projection.part_id == part_id,

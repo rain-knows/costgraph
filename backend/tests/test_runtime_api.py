@@ -126,7 +126,7 @@ def test_runtime_service_does_not_accept_caller_selected_api_version(
     from app.services import runtime_service
 
     principal = ExecutionPrincipal(
-        principal_id="owner", tenant_id="tenant", roles=("user",)
+        principal_id="owner", tenant_id="tenant", roles=("viewer",)
     )
     assert runtime_service.get_active_run("conversation-1", principal) is None
     assert (
@@ -180,7 +180,7 @@ def test_terminal_sse_event_does_not_query_run_again(monkeypatch) -> None:
     repository = FakeRepository()
     monkeypatch.setattr(runtime_service, "_repository", lambda: repository)
     principal = ExecutionPrincipal(
-        principal_id="owner", tenant_id="tenant", roles=("user",)
+        principal_id="owner", tenant_id="tenant", roles=("viewer",)
     )
 
     events = list(

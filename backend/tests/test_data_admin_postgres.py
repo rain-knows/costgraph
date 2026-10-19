@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -72,25 +73,77 @@ def postgres_data_admin(monkeypatch: pytest.MonkeyPatch):
     importer = CostDataImporter()
     records = _sample_records()
     try:
-        published = importer.import_records(
+        valid = importer.validate_payload(
             tenant_id=tenant_id,
             source_system="data-admin-integration",
-            source_file=r"C:\imports\data-admin-secret.json",
             **records,
         )
-        assert published.status == "published"
+        assert valid.error_rows == 0
+        published_batch_id = uuid4()
+        published = importer.publish_validated_snapshot(
+            tenant_id=tenant_id,
+            source_system="data-admin-integration",
+            batch_id=published_batch_id,
+            source_file=r"C:\imports\data-admin-secret.json",
+            source_snapshot_hash=valid.snapshot_hash,
+            calculation_rule_version=CALCULATION_RULE_VERSION,
+            **records,
+        )
+        assert published["status"] == "published"
+
+        # 校验失败不再产生 published 快照，但任务仍需一个批次行承载错误明细
+        # （data_load_errors 到 data_load_batches 的外键），因此这里模拟 Worker
+        # 校验失败的写路径：batch_id = 任务 ID，status = failed。
+        failed_batch_id = uuid4()
         failed_records = {
             key: [dict(row) for row in value] for key, value in records.items()
         }
         failed_records["parts"][0]["unit"] = ""
-        failed = importer.import_records(
+        failed_outcome = importer.validate_payload(
             tenant_id=tenant_id,
             source_system="data-admin-integration-failed",
-            source_file="/srv/imports/failed.json",
             **failed_records,
         )
-        assert failed.status == "failed"
-        yield settings, repository, tenant_id, published.batch_id, failed.batch_id
+        assert failed_outcome.error_rows >= 1
+        now = datetime.now(UTC)
+        with get_session_factory()() as session:
+            session.add(
+                DataLoadBatch(
+                    batch_id=failed_batch_id,
+                    tenant_id=tenant_id,
+                    source_system="data-admin-integration-failed",
+                    source_file="failed.json",
+                    source_snapshot_hash=failed_outcome.snapshot_hash,
+                    calculation_rule_version=CALCULATION_RULE_VERSION,
+                    status="failed",
+                    total_rows=failed_outcome.total_rows,
+                    valid_rows=failed_outcome.valid_rows,
+                    error_rows=failed_outcome.error_rows,
+                    error_summary=None,
+                    started_at=now,
+                    finished_at=now,
+                    created_at=now,
+                )
+            )
+            session.flush()
+            session.execute(
+                DataLoadError.__table__.insert(),
+                [
+                    {
+                        "tenant_id": tenant_id,
+                        "batch_id": failed_batch_id,
+                        "source_table": item.source_table,
+                        "source_record_id": item.source_record_id,
+                        "error_code": item.error_code,
+                        "error_message": item.error_message,
+                        "raw_payload": None,
+                        "created_at": now,
+                    }
+                    for item in failed_outcome.errors
+                ],
+            )
+            session.commit()
+        yield settings, repository, tenant_id, published_batch_id, failed_batch_id
     finally:
         with get_session_factory()() as session:
             session.execute(
@@ -122,7 +175,7 @@ def _context(tenant_id: str, *, scope: DataScope | None = None):
         principal=ExecutionPrincipal(
             principal_id="data-admin-integration",
             tenant_id=tenant_id,
-            roles=("admin",),
+            roles=("tenant_admin",),
         ),
     )
     return context.model_copy(update={"data_scope": scope or context.data_scope})
@@ -185,7 +238,7 @@ def test_postgres_data_admin_api_uses_real_repository(postgres_data_admin):
     principal = ExecutionPrincipal(
         principal_id="data-admin-api-integration",
         tenant_id=tenant_id,
-        roles=("admin",),
+        roles=("tenant_admin",),
     )
     app = create_app()
     app.dependency_overrides[get_server_principal] = lambda: principal

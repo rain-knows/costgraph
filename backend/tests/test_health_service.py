@@ -14,7 +14,7 @@ from app.settings import AppSettings
 def database_catalog(monkeypatch):
     engine = MagicMock()
     connection = engine.connect.return_value.__enter__.return_value
-    connection.execute.return_value = [(health_service.EXPECTED_ALEMBIC_HEAD,)]
+    connection.execute.return_value = [(health_service.expected_alembic_head(),)]
     monkeypatch.setattr(health_service, "get_engine", lambda: engine)
     monkeypatch.setattr(health_service, "_worker_status", lambda _: "healthy")
     catalog = {

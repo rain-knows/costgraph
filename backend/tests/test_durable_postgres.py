@@ -43,8 +43,15 @@ def durable_settings(monkeypatch: pytest.MonkeyPatch):
     if not database_url:
         pytest.skip("未配置 TEST_COST_DATABASE_URL，跳过真实 PostgreSQL durable 测试。")
     monkeypatch.setenv("COST_DATABASE_URL", database_url)
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "")
     monkeypatch.setenv("APP_VERSION", "durable-test")
+    # 模型必须离线且确定性：Fixture 适配器不联网，并把“产品A”解析为 FG-001。
+    # runtime_services 内部是惰性导入，worker 是模块级导入，因此两处都要替换。
+    from evaluation.fixture_model_provider import FixtureModelProvider
+
+    monkeypatch.setattr(
+        "app.agent.providers.get_model_provider", lambda: FixtureModelProvider()
+    )
+    monkeypatch.setattr("app.worker.get_model_provider", lambda: FixtureModelProvider())
     reset_engine()
     yield get_settings()
     reset_engine()
@@ -59,12 +66,12 @@ def test_postgres_worker_claim_checkpoint_recovery_and_atomic_finalize(
     owner = ExecutionPrincipal(
         principal_id=owner_id,
         tenant_id=tenant_id,
-        roles=("user",),
+        roles=("viewer",),
     )
     intruder = ExecutionPrincipal(
         principal_id=f"durable-intruder-{uuid4().hex}",
         tenant_id=tenant_id,
-        roles=("user",),
+        roles=("viewer",),
     )
     conversations = PostgresConversationRepository()
     repository = PostgresRunRepository(settings=durable_settings)
@@ -340,12 +347,12 @@ def test_durable_run_api_sse_cancel_owner_isolation_and_readiness(
     owner = ExecutionPrincipal(
         principal_id="api-owner",
         tenant_id=tenant_id,
-        roles=("user",),
+        roles=("viewer",),
     )
     intruder = ExecutionPrincipal(
         principal_id="api-intruder",
         tenant_id=tenant_id,
-        roles=("user",),
+        roles=("viewer",),
     )
     conversations = PostgresConversationRepository()
     repository = PostgresRunRepository(settings=durable_settings)
@@ -478,7 +485,7 @@ def test_runtime_postgres_budget_events_and_fixed_protocol_version(
     owner = ExecutionPrincipal(
         principal_id="runtime-owner",
         tenant_id=tenant_id,
-        roles=("user",),
+        roles=("viewer",),
     )
     conversations = PostgresConversationRepository()
     repository = PostgresRunRepository(settings=durable_settings)

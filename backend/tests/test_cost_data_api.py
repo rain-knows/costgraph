@@ -14,7 +14,7 @@ from evaluation.fixture_cost_repository import CostFixtureRepository
 PRINCIPAL = ExecutionPrincipal(
     principal_id="test-user",
     tenant_id="test-tenant",
-    roles=("user",),
+    roles=("viewer",),
 )
 
 
@@ -143,19 +143,23 @@ def test_cost_data_accepts_a_valid_ratio_that_rounds_to_zero() -> None:
     assert edge["allocated_costs"]["total_amount"] == "0.00"
 
 
-def test_user_and_admin_retain_cost_access_and_invalid_period_is_rejected() -> None:
+def test_viewer_and_tenant_admin_retain_cost_access_and_invalid_period_is_rejected() -> (
+    None
+):
     invalid = _client().get("/api/cost-data/overview?period=2026-13")
-    user = _client(
+    viewer = _client(
         ExecutionPrincipal(
-            principal_id="viewer", tenant_id="test-tenant", roles=("user",)
+            principal_id="viewer", tenant_id="test-tenant", roles=("viewer",)
         )
     ).get("/api/cost-data/overview?period=2026-06")
-    admin = _client(
+    tenant_admin = _client(
         ExecutionPrincipal(
-            principal_id="admin", tenant_id="test-tenant", roles=("admin",)
+            principal_id="tenant-admin",
+            tenant_id="test-tenant",
+            roles=("tenant_admin",),
         )
     ).get("/api/cost-data/overview?period=2026-06")
 
     assert invalid.status_code == 422
-    assert user.status_code == 200
-    assert admin.status_code == 200
+    assert viewer.status_code == 200
+    assert tenant_admin.status_code == 200

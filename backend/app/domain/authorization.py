@@ -15,18 +15,61 @@ from app.agent.capabilities import (
 )
 from app.settings import get_settings
 
-RoleId = Literal["user", "admin"]
-PermissionId = Literal["data_management.read"]
+RoleId = Literal["viewer", "data_operator", "data_approver", "tenant_admin"]
+PermissionId = Literal[
+    "cost_data.read",
+    "data_management.read",
+    "data_import.submit",
+    "data_import.approve",
+    "iam.manage",
+    "data_scope.manage",
+    "audit.read",
+]
+
+_AGENT_CAPABILITIES: tuple[CapabilityId, ...] = (
+    "system_help",
+    "cost_calculation",
+    "report_generation",
+)
 
 ROLE_CAPABILITIES: dict[RoleId, tuple[CapabilityId, ...]] = {
-    "user": ("system_help", "cost_calculation", "report_generation"),
-    "admin": ("system_help", "cost_calculation", "report_generation"),
+    "viewer": _AGENT_CAPABILITIES,
+    "data_operator": _AGENT_CAPABILITIES,
+    "data_approver": _AGENT_CAPABILITIES,
+    "tenant_admin": _AGENT_CAPABILITIES,
 }
 ROLE_PERMISSIONS: dict[RoleId, tuple[PermissionId, ...]] = {
-    "user": (),
-    "admin": ("data_management.read",),
+    "viewer": ("cost_data.read",),
+    "data_operator": (
+        "cost_data.read",
+        "data_management.read",
+        "data_import.submit",
+    ),
+    "data_approver": (
+        "cost_data.read",
+        "data_management.read",
+        "data_import.approve",
+        "audit.read",
+    ),
+    "tenant_admin": (
+        "cost_data.read",
+        "data_management.read",
+        "data_import.submit",
+        "data_import.approve",
+        "iam.manage",
+        "data_scope.manage",
+        "audit.read",
+    ),
 }
-ALL_PERMISSION_IDS: tuple[PermissionId, ...] = ("data_management.read",)
+ALL_PERMISSION_IDS: tuple[PermissionId, ...] = (
+    "cost_data.read",
+    "data_management.read",
+    "data_import.submit",
+    "data_import.approve",
+    "iam.manage",
+    "data_scope.manage",
+    "audit.read",
+)
 
 
 def _validate_capability_role_metadata() -> None:
@@ -264,31 +307,36 @@ def build_execution_context(
     return _build_context_from_requests(owner, requested, requested_permissions)
 
 
-def execution_context_from_state(value: object) -> ExecutionContext:
+def execution_context_from_state(
+    value: object,
+    *,
+    authoritative_principal: ExecutionPrincipal | None = None,
+) -> ExecutionContext:
     """Rebuild authorization from persisted requests, never trust derived fields.
 
-    Serialized checkpoint state is an untrusted input boundary: its principal
-    must match the current server principal, and its effective grants are never
-    trusted. An in-process ExecutionContext is already built from a validated
-    principal, so it is re-derived without repeating the serialized-state check.
+    Serialized checkpoint state is an untrusted input boundary: its effective
+    grants are never trusted, only re-derived from the persisted requests. When
+    ``authoritative_principal`` is supplied the persisted principal must equal
+    it, which is how the worker binds a run's checkpoint to the principal
+    frozen in that run's row. Callers inside a run have no authoritative
+    principal of their own and omit it, so identity is bound once at the run
+    boundary instead of being re-resolved against ambient configuration.
     """
     is_model = isinstance(value, ExecutionContext)
     raw = value.model_dump(mode="python") if is_model else value
     if not isinstance(raw, dict):
         raise TypeError("execution_context 状态格式无效")
     principal = ExecutionPrincipal.model_validate(raw.get("principal"))
-    if not is_model:
-        server_principal = get_server_principal()
-        if (
-            principal.principal_id,
-            principal.tenant_id,
-            principal.roles,
-        ) != (
-            server_principal.principal_id,
-            server_principal.tenant_id,
-            server_principal.roles,
-        ):
-            raise PermissionError("主体与当前服务端主体不一致")
+    if authoritative_principal is not None and (
+        principal.principal_id,
+        principal.tenant_id,
+        principal.roles,
+    ) != (
+        authoritative_principal.principal_id,
+        authoritative_principal.tenant_id,
+        authoritative_principal.roles,
+    ):
+        raise PermissionError("主体与当前服务端主体不一致")
     requested = validate_capability_ids(list(raw.get("requested_capabilities") or []))
     return _build_context_from_requests(
         principal,

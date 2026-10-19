@@ -18,9 +18,12 @@ $requiredDocs = @(
     "api/agent-contract.md",
     "api/cost-data-contract.md",
     "api/data-admin-contract.md",
+    "api/iam-contract.md",
     "operations/runbook.md",
     "governance/documentation.md",
-    "plans/agent-demo-to-costgraph.md"
+    "plans/agent-demo-to-costgraph.md",
+    "plans/data-governance-phase2-batch1-spec.md",
+    "plans/data-management-and-permission-governance.md"
 )
 
 $requiredRootFiles = @("AGENTS.md", "README.md", "DESIGN.md")
@@ -250,6 +253,23 @@ Assert-ChangedDocs @(
     '^data/'
 ) @('docs/data/governance.md', 'docs/architecture/data-flow.md') "成本导入或发布"
 
+# 导入任务与统一 Worker 调度器：新增任务表、对象存储、租约调度或增量迁移时，
+# storage/data-dictionary 描述结构，governance 描述状态机，runtime 描述 Worker 领取
+# 与重试，data-admin-contract 描述新接口。
+Assert-ChangedDocs @(
+    '^backend/app/services/(import_job_service|import_object_store)\.py$',
+    '^backend/app/repositories/(import_job_repository|postgres_import_job_repository)\.py$',
+    '^backend/alembic/',
+    '^backend/app/db/models\.py$',
+    '^backend/app/worker\.py$'
+) @(
+    'docs/data/storage.md',
+    'docs/data/data-dictionary.md',
+    'docs/data/governance.md',
+    'docs/architecture/runtime.md',
+    'docs/api/data-admin-contract.md'
+) "导入任务、Worker 或迁移"
+
 Assert-ChangedDocs @(
     '^backend/app/api/(conversations|runtime_runs|artifacts)\.py$',
     '^backend/app/schemas/(agent|runtime|artifact)\.py$',
@@ -308,13 +328,19 @@ foreach ($requiredRule in @("docs/README.md", "DESIGN.md", "check_docs_sync.ps1"
     }
 }
 
+# 迁移策略（二期批次 1 决策 1）：baseline 必须存在且保持为迁移图根节点；
+# 允许在其之上叠加增量迁移，不再限制迁移文件总数。
 $baselineDir = Join-Path $repoRoot "backend/alembic/versions"
-if (Test-Path -LiteralPath $baselineDir) {
-    $baselineFiles = @(Get-ChildItem -LiteralPath $baselineDir -File -Filter '*.py' |
-        Where-Object { $_.Name -ne '__init__.py' })
-    if ($baselineFiles.Count -ne 1) {
-        throw "CostGraph 必须只有一条 Alembic baseline，当前发现 $($baselineFiles.Count) 条迁移。"
-    }
+$baselinePath = Join-Path $baselineDir "20260907_0001_costgraph_baseline.py"
+if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) {
+    throw "缺少 CostGraph Alembic baseline：backend/alembic/versions/20260907_0001_costgraph_baseline.py。"
+}
+$baselineContent = Get-Content -Raw $baselinePath
+if ($baselineContent -notmatch 'revision:\s*str\s*=\s*"20260907_0001"') {
+    throw "Alembic baseline 文件的 revision 不是 20260907_0001。"
+}
+if ($baselineContent -notmatch 'down_revision:\s*str\s*\|\s*None\s*=\s*None') {
+    throw "Alembic baseline 必须是迁移图的根节点（down_revision = None）。"
 }
 
 $legacyPatterns = @(
@@ -387,4 +413,4 @@ if ($missingLinks.Count -gt 0) {
     throw ("存在失效 Markdown 相对链接:`n" + ($missingLinks -join "`n"))
 }
 
-Write-Output "文档同步检查通过：原子文档、设计 provenance、单一 baseline、同步映射、旧标识与 Markdown 链接均符合要求。"
+Write-Output "文档同步检查通过：原子文档、设计 provenance、baseline 存在且允许增量迁移、同步映射、旧标识与 Markdown 链接均符合要求。"

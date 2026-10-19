@@ -11,38 +11,118 @@
 
 ```dotenv
 COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
-AGENT_PRINCIPAL_ROLES=user
+AGENT_PRINCIPAL_ROLES=viewer
 ```
 
 本地非敏感配置写入 `backend/.env`，环境变量优先。不要打印或提交连接密码和 API Key。
 
+导入载荷写入本地内容寻址对象存储。目录可用 `IMPORT_OBJECT_STORE_ROOT` 覆盖，缺省为系统临时目录下
+`costgraph-import-objects`。该目录必须对 API 与 Worker 进程可写，且属于受控运行数据，不得提交。
+
+### 角色配置
+
+`AGENT_PRINCIPAL_ROLES` 接受四个最终角色之一或多个（逗号分隔，不能重复、不能未知）。
+`user`/`admin` 旧值已删除，配置旧值会在主体构造时直接失败：
+
+```dotenv
+# 只读查看成本：
+AGENT_PRINCIPAL_ROLES=viewer
+# 提交导入任务：
+AGENT_PRINCIPAL_ROLES=data_operator
+# 审批导入任务：
+AGENT_PRINCIPAL_ROLES=data_approver
+# 全权限（含角色/数据范围管理与审计读取）：
+AGENT_PRINCIPAL_ROLES=tenant_admin
+```
+
+角色 -> 权限映射见 [Harness](../architecture/harness.md)。修改后必须重启 API 与 Worker。
+
 ## 空库迁移与导入
 
-当前唯一 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换。已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。`dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
+迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20260917_0002`。
+baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换；增量迁移
+`20260917_0002` 新增导入任务与治理审计表，并把 `batch_id` 入键改造为不可变快照。
+已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，
+然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。
+`dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
 
-当前 baseline 同时创建 `finished_batch_cost_projections`。导入会在同一事务中完成事实写入、420 个样例成品批次的确定性卷积和查询投影发布；首次导入比普通查询耗时更长属于预期。规则版本改变时，即使来源哈希不变也必须生成新发布批次。
+迁移同时创建 `finished_batch_cost_projections`。导入会在发布事务中完成事实写入、420 个样例成品
+批次的确定性卷积和查询投影发布；首次导入比普通查询耗时更长属于预期。规则版本改变时，即使来源
+哈希不变也必须重新提交并生成新发布批次。
 
 ```powershell
 cd D:\work\costgraph
 Copy-Item backend\.env.example backend\.env
 $env:COST_DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/costgraph"
+$env:IMPORT_OBJECT_STORE_ROOT="D:\work\costgraph\.import-objects"
 py -3.12 -m venv backend\.venv
 backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 Push-Location backend
 .\.venv\Scripts\alembic.exe upgrade head
 .\.venv\Scripts\alembic.exe current
 Pop-Location
-$batch = backend\.venv\Scripts\python.exe backend\scripts\import_cost_data.py | ConvertFrom-Json
-backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.batch_id
 ```
 
-导入命令默认读取 `data/samples/parts.json`、`cost_events.json`、`cost_event_inputs.json` 和 `cost_records.json`。退出码 0 仍需核对：
+`alembic current` 必须输出 `20260917_0002 (head)`。API、Worker 和 `dev.ps1` 都不执行 Alembic。
 
-- 批次状态为 `published`，`error_rows=0`。
+## 提交导入任务与验证
+
+`backend/scripts/import_cost_data.py` 只**提交**导入任务，不再直接发布。校验、投影与发布由
+Worker 完成，可用 `--auto-approve` 驱动完整状态机：
+
+```powershell
+cd D:\work\costgraph
+$env:PYTHONPATH="D:\work\costgraph\backend"
+# 只提交（需 data_operator；Worker 必须运行才能推进到 approval_pending）：
+$job = backend\.venv\Scripts\python.exe backend\scripts\import_cost_data.py | ConvertFrom-Json
+# 提交 + 审批 + 发布（以 tenant_admin 驱动，供开发/端到端验证；不需要另起 Worker）：
+$job = backend\.venv\Scripts\python.exe backend\scripts\import_cost_data.py --auto-approve | ConvertFrom-Json
+$job
+backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $job.job_id
+```
+
+`--auto-approve` 输出 `job_id`、`status`、`duplicate`、`snapshot_hash`、`source_object_key`、
+`total_rows`，以及 `validation_status`/`decision_status`/`publish_status`。任务发布后的批次
+`batch_id` 等于 `job_id`，因此 `inspect_cost_batch.py` 传入 `$job.job_id`；若只提交（无
+`--auto-approve`），该批次尚不存在，需等 Worker 走完状态机。
+
+其他可用参数：`--source-system`、`--calculation-rule-version`、`--idempotency-key`、`--tenant-id`、
+`--principal-id`。同租户同 `--idempotency-key` 重复提交返回已有任务（`duplicate: true`），不新建。
+
+导入命令默认读取 `data/samples/parts.json`、`cost_events.json`、`cost_event_inputs.json` 和
+`cost_records.json`。退出码 0 仍需核对：
+
+- 任务状态为 `published`，`error_rows=0`；发布批次状态为 `published`。
 - 四类行数与样例文件一致。
 - 100 个产成品 SKU 覆盖 24 个自然月，每月至少 10 个最终批次；全部 SKU 至少可做同比，核心 SKU 可做连续环比。
 - 固定黄金子集仍为 3 个汽车装饰件产成品跨 2 个期间形成的 6 个最终批次，并应追溯到注塑成型、火焰处理与表皮包覆、卡扣压装与门板总成装配三道连续工序。
-- 当前租户只有一个 `published` 快照。
+- 当前租户只有一个 `published` 快照；旧快照在发布事务提交后转 `superseded`。
+
+直接用 API 验证任务状态机（需要带 `Idempotency-Key` 和对应权限的服务端角色）：
+
+```powershell
+$headers = @{ "Idempotency-Key" = "runbook-$(Get-Date -Format yyyyMMddHHmmss)" }
+$body = @{
+    source_system = "mes"; source_file_name = "cost_events.json"
+    calculation_rule_version = "cost-v1"
+    payload = @{ parts = @(); cost_events = @(); cost_event_inputs = @(); cost_records = @() }
+} | ConvertTo-Json -Depth 6
+$submission = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/data-admin/imports" -Headers $headers -ContentType "application/json" -Body $body
+$submission | ConvertTo-Json -Depth 5
+Invoke-RestMethod "http://127.0.0.1:8000/api/data-admin/imports/$($submission.job_id)"
+Invoke-RestMethod "http://127.0.0.1:8000/api/data-admin/imports/$($submission.job_id)/errors"
+```
+
+审批（`data_approver` 或 `tenant_admin`）：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/data-admin/imports/$($submission.job_id)/decision" -ContentType "application/json" -Body '{"decision":"approve","reason":"runbook"}'
+```
+
+缺少 `Idempotency-Key` 必须返回 `422/idempotency_key_required`；权限不足必须返回 `403`（错误码
+以 `data_import_submit_access_denied`/`data_import_approve_access_denied` 区分）；非
+`approval_pending` 状态审批必须返回 `409/import_job_state_conflict`；跨租户任务必须返回
+`404/import_job_not_found`。响应中永远不应出现 `payload`、`raw_payload` 或对象内容。
 
 如需从规则确定性重建仓库内样例，先运行：
 
@@ -62,9 +142,24 @@ backend\.venv\Scripts\python.exe backend\scripts\benchmark_cost_queries.py
 
 格式、关系和 48 项代码见[成本核算格式](../data/cost-accounting-format.md)。
 
-## 数据治理面板验证
+## 数据治理接口验证
 
-默认主体角色为 `user`，因此不会获得数据治理导航。升级到 user/admin 角色模型时，必须检查并显式更新本地 `backend/.env`、服务环境变量与部署 Secret 中的 `AGENT_PRINCIPAL_ROLES`；旧值 `system_viewer/cost_analyst/agent_admin` 会导致主体构造失败。普通主体配置 `user`，需要查看面板的部署配置 `admin`，修改后重启 API。需要验证只读管理面板时访问 `/data-admin?period=2026-06`，确认 `/api/me` 返回 `data_management.read`，并确认 `/api/data-admin/published`、`/quality` 和批次端点只读返回当前租户数据。数据库不可用或当前规则投影不完整时应看到 `503/database_unavailable`，而不是空数据。
+默认主体角色为 `viewer`，因此不会获得数据治理读取权限。验证只读治理面时把角色改为
+`data_operator`/`data_approver`/`tenant_admin`，重启 API 后确认：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8000/api/me"
+Invoke-RestMethod "http://127.0.0.1:8000/api/data-admin/batches?page=1&page_size=20"
+Invoke-RestMethod "http://127.0.0.1:8000/api/data-admin/published"
+Invoke-RestMethod "http://127.0.0.1:8000/api/data-admin/quality"
+Invoke-RestMethod "http://127.0.0.1:8000/api/data-admin/imports?page=1&page_size=20"
+```
+
+`/api/me` 必须返回当前角色的有效权限；`viewer` 访问上述治理接口固定 `403`。数据库不可用或
+当前规则投影不完整时应看到 `503/database_unavailable`，而不是空数据。
+
+批次响应新增可选 `job_status`；导入任务响应不含 `lease_owner`/`lease_expires_at`/`available_at`
+和 `payload`。跨租户批次与任务按未找到（404）处理。
 
 ## 启动与健康
 
@@ -88,7 +183,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/readyz
 
 `dev.ps1` 兼容 Windows PowerShell 5.1 与 `pwsh`；启动期间会监测新进程，若 API、Worker 或 Vite 在健康检查完成前退出，会立即返回并附对应错误日志末尾。
 
-`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。历史开发 baseline 可能与当前 baseline 共用 `20260907_0001`，因此 `alembic current` 为 head 或重复执行 `upgrade head` 都不能证明旧库表结构已更新。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
+`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。当前 head 为 `20260917_0002`；`alembic current` 必须显示该 revision，重复执行 `upgrade head` 不会修复历史库中与实际模型不一致的表结构。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
 
 `livez` 只检查进程，`readyz` 检查数据库、Alembic head、必需表和列以及 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek，也不校验列类型、索引和约束或是否已发布成本快照。
 
@@ -132,6 +227,7 @@ git diff --check
 CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 3 个 skip，与下述验证矩阵一致。
 
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
+- 导入任务测试覆盖状态机全部合法/非法迁移、幂等提交、重复快照返回已有任务、取消、租约过期、重试退避、审批与发布事务原子性、新旧快照并存、跨租户隔离，以及审计不可修改且不含载荷。
 - 成本测试覆盖多投入、部分领用、同批次分流、不良成本承接、全量领用尾差、三视图恒等式和黄金结果。
 - PostgreSQL 集成覆盖发布、数据范围、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。未配置 `TEST_COST_DATABASE_URL` 导致的 skip 必须单独报告。
 - 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `3.0`、`presentation/period_comparison` 两种样式、`report_generation` 能力路由和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
@@ -145,7 +241,7 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 
 1. 先查 `/api/health` 和 `/api/readyz` 的 database、migration、worker 与 `runtime_ready`。
 2. 确认连接配置存在但不要打印秘密；检查 `alembic current`、8000/5173 端口和 `dev.ps1 logs`。
-3. 检查当前 `published` 导入批次、错误码和四类记录计数；旧 schema 数据库不能通过重复执行同 revision 的 `upgrade head` 转换。
+3. 检查当前 `published` 导入批次、导入任务状态（`submitted/validating/approval_pending/approved/publishing/published/publish_failed`）、错误码和四类记录计数；旧 schema 数据库不能通过重复执行同 revision 的 `upgrade head` 转换。等待审批的任务不会发布；`publish_failed` 只允许重试发布，不回滚旧快照。
 4. 检查完工批次所属期间、追溯 DAG、领用总量、单位和 48 项费用代码。
 5. 检查服务端 tenant、principal 和 data scope；最终批次及其整条上游追溯链必须同时可见。
 6. 检查 Run 状态、attempt、可用时间、租约 owner/过期时间和最后事件 ID；有效租约期间不要手工重复执行。

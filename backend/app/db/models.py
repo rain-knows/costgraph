@@ -36,12 +36,15 @@ class Base(DeclarativeBase):
 class Part(Base):
     __tablename__ = "parts"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "part_id", name="uq_parts_tenant_part"),
+        UniqueConstraint(
+            "tenant_id", "batch_id", "part_id", name="uq_parts_tenant_part"
+        ),
         UniqueConstraint(
             "tenant_id",
+            "batch_id",
             "source_system",
             "source_record_id",
-            name="uq_parts_source_record",
+            name="uq_parts_batch_source_record",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "batch_id"],
@@ -54,6 +57,7 @@ class Part(Base):
         {"schema": COST_SCHEMA},
     )
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     part_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     part_number: Mapped[str] = mapped_column(String(128), nullable=False)
     part_description: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -62,7 +66,6 @@ class Part(Base):
     unit: Mapped[str] = mapped_column(String(32), nullable=False)
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -75,21 +78,23 @@ class Part(Base):
 class CostEvent(Base):
     __tablename__ = "cost_events"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "event_id", name="uq_cost_events_tenant_event"),
         UniqueConstraint(
-            "tenant_id",
-            "output_batch_id",
-            name="uq_cost_events_tenant_output_batch",
+            "tenant_id", "batch_id", "event_id", name="uq_cost_events_tenant_event"
         ),
         UniqueConstraint(
             "tenant_id",
+            "batch_id",
             "source_system",
             "source_record_id",
-            name="uq_cost_events_source_record",
+            name="uq_cost_events_batch_source_record",
         ),
         ForeignKeyConstraint(
-            ["tenant_id", "part_id"],
-            [f"{COST_SCHEMA}.parts.tenant_id", f"{COST_SCHEMA}.parts.part_id"],
+            ["tenant_id", "batch_id", "part_id"],
+            [
+                f"{COST_SCHEMA}.parts.tenant_id",
+                f"{COST_SCHEMA}.parts.batch_id",
+                f"{COST_SCHEMA}.parts.part_id",
+            ],
             name="fk_cost_events_part",
         ),
         ForeignKeyConstraint(
@@ -120,6 +125,7 @@ class CostEvent(Base):
         {"schema": COST_SCHEMA},
     )
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     event_type: Mapped[str] = mapped_column(String(16), nullable=False)
     output_batch_id: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -146,7 +152,6 @@ class CostEvent(Base):
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -158,19 +163,23 @@ class CostEvent(Base):
 class CostEventInput(Base):
     __tablename__ = "cost_event_inputs"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "input_id", name="uq_cost_event_inputs_id"),
+        UniqueConstraint(
+            "tenant_id", "batch_id", "input_id", name="uq_cost_event_inputs_id"
+        ),
         ForeignKeyConstraint(
-            ["tenant_id", "event_id"],
+            ["tenant_id", "batch_id", "event_id"],
             [
                 f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.batch_id",
                 f"{COST_SCHEMA}.cost_events.event_id",
             ],
             name="fk_cost_event_inputs_target",
         ),
         ForeignKeyConstraint(
-            ["tenant_id", "source_event_id"],
+            ["tenant_id", "batch_id", "source_event_id"],
             [
                 f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.batch_id",
                 f"{COST_SCHEMA}.cost_events.event_id",
             ],
             name="fk_cost_event_inputs_source",
@@ -187,6 +196,7 @@ class CostEventInput(Base):
         {"schema": COST_SCHEMA},
     )
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     input_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     event_id: Mapped[str] = mapped_column(String(128), nullable=False)
     source_event_id: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -195,7 +205,6 @@ class CostEventInput(Base):
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -207,17 +216,21 @@ class CostEventInput(Base):
 class CostRecord(Base):
     __tablename__ = "cost_records"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "cost_record_id", name="uq_cost_records_id"),
+        UniqueConstraint(
+            "tenant_id", "batch_id", "cost_record_id", name="uq_cost_records_id"
+        ),
         UniqueConstraint(
             "tenant_id",
+            "batch_id",
             "source_system",
             "source_record_id",
-            name="uq_cost_records_source_record",
+            name="uq_cost_records_batch_source_record",
         ),
         ForeignKeyConstraint(
-            ["tenant_id", "event_id"],
+            ["tenant_id", "batch_id", "event_id"],
             [
                 f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.batch_id",
                 f"{COST_SCHEMA}.cost_events.event_id",
             ],
             name="fk_cost_records_event",
@@ -235,6 +248,7 @@ class CostRecord(Base):
         {"schema": COST_SCHEMA},
     )
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     cost_record_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     event_id: Mapped[str] = mapped_column(String(128), nullable=False)
     cost_code: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -248,7 +262,6 @@ class CostRecord(Base):
     source_document_line: Mapped[str | None] = mapped_column(String(64))
     source_record_id: Mapped[str] = mapped_column(String(128), nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -262,20 +275,26 @@ class FinishedBatchCostProjection(Base):
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
+            "batch_id",
             "finished_batch_id",
             name="uq_finished_cost_projection_batch",
         ),
         ForeignKeyConstraint(
-            ["tenant_id", "event_id"],
+            ["tenant_id", "batch_id", "event_id"],
             [
                 f"{COST_SCHEMA}.cost_events.tenant_id",
+                f"{COST_SCHEMA}.cost_events.batch_id",
                 f"{COST_SCHEMA}.cost_events.event_id",
             ],
             name="fk_finished_cost_projection_event",
         ),
         ForeignKeyConstraint(
-            ["tenant_id", "part_id"],
-            [f"{COST_SCHEMA}.parts.tenant_id", f"{COST_SCHEMA}.parts.part_id"],
+            ["tenant_id", "batch_id", "part_id"],
+            [
+                f"{COST_SCHEMA}.parts.tenant_id",
+                f"{COST_SCHEMA}.parts.batch_id",
+                f"{COST_SCHEMA}.parts.part_id",
+            ],
             name="fk_finished_cost_projection_part",
         ),
         ForeignKeyConstraint(
@@ -323,8 +342,8 @@ class FinishedBatchCostProjection(Base):
     )
 
     tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    batch_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     finished_batch_id: Mapped[str] = mapped_column(String(128), nullable=False)
     part_id: Mapped[str] = mapped_column(String(64), nullable=False)
     period: Mapped[str] = mapped_column(String(7), nullable=False)
@@ -429,6 +448,101 @@ class DataLoadError(Base):
     error_code: Mapped[str] = mapped_column(String(64), nullable=False)
     error_message: Mapped[str] = mapped_column(Text, nullable=False)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DataImportJob(Base):
+    __tablename__ = "data_import_jobs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_data_import_jobs_idempotency",
+        ),
+        CheckConstraint(
+            "status in ('submitted', 'validating', 'validation_failed', "
+            "'approval_pending', 'approved', 'rejected', 'publishing', "
+            "'published', 'publish_failed', 'cancelled')",
+            name="ck_data_import_jobs_status",
+        ),
+        CheckConstraint(
+            "total_rows >= 0 and valid_rows >= 0 and error_rows >= 0",
+            name="ck_data_import_jobs_nonnegative_counts",
+        ),
+        Index(
+            "ix_data_import_jobs_claim", "status", "available_at", "lease_expires_at"
+        ),
+        Index("ix_data_import_jobs_tenant_created", "tenant_id", "created_at"),
+        {"schema": COST_SCHEMA},
+    )
+
+    job_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    principal_roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    source_system: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_object_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_object_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_object_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    calculation_rule_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    valid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    decision: Mapped[str | None] = mapped_column(String(16))
+    decision_reason: Mapped[str | None] = mapped_column(String(500))
+    decided_by: Mapped[str | None] = mapped_column(String(128))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_batch_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_owner: Mapped[str | None] = mapped_column(String(128))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class GovernanceAuditEvent(Base):
+    __tablename__ = "governance_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action in ('submitted', 'validated', 'validation_failed', "
+            "'approved', 'rejected', 'publishing', 'published', "
+            "'publish_failed', 'cancelled')",
+            name="ck_governance_audit_events_action",
+        ),
+        CheckConstraint(
+            "outcome in ('success', 'failure')",
+            name="ck_governance_audit_events_outcome",
+        ),
+        Index("ix_governance_audit_events_tenant_created", "tenant_id", "created_at"),
+        Index("ix_governance_audit_events_job", "job_id"),
+        {"schema": COST_SCHEMA},
+    )
+
+    event_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    job_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    batch_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    actor_principal_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

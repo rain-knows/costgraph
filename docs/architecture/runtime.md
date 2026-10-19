@@ -14,6 +14,37 @@ LangGraph node -> RuntimeServices
 
 生产请求只进入 PostgreSQL Run 队列，由独立 Worker 执行。Fixture Provider、Fixture Tool 和直接图调用只存在于自动化测试、Replay 与离线 Eval，不构成应用运行模式或故障回退。生产模型配置、传输或结构化响应失败时，Runtime 不继续执行后续节点，不读取额外成本事实，不生成 `report_json` 或 Artifact；Worker 按 `model_unavailable` 的重试策略处理，最终状态为 `failed` 或 `retry_wait`。
 
+## 统一任务调度器
+
+`backend/app/worker.py` 的 `AgentWorker` 是单一 Worker 进程，内置两个独立领取路径：一条处理
+agent run（既有路径，未被导入任务重构），一条处理数据导入任务。两条路径复用同一 worker 注册表、
+`worker_id` 与心跳，但各自独立领取与并发控制。导入任务的领取循环是
+`run_import_jobs()`（线程池）与 `process_next_import_job()`（同步单步，供 CLI 与端到端验证）。
+
+导入任务调度契约：
+
+- **领取**：`claim_next_job(worker_id)` 在 `status IN ('submitted','approved')` 或租约已过期的
+  `validating`/`publishing` 行上用 `FOR UPDATE SKIP LOCKED` 加行锁，取最早 `created_at` 的一条；
+  同时递增 `attempt_count`、写入 `lease_owner`/`lease_expires_at`、首次写入 `started_at`。
+- **状态推进**：`submitted` 领取即转 `validating`；`approved` 领取即转 `publishing`。
+- **租约与心跳**：租约时长 `IMPORT_JOB_LEASE_SECONDS = 90` 秒；任务执行期间后台线程每
+  `AGENT_RUN_HEARTBEAT_SECONDS` 调用 `renew_job_lease()` 延长，更新条件是
+  `lease_owner == worker_id AND status IN ('validating','publishing')`。续租失败或返回零行表示租约丢失，
+  Worker 放弃本任务（`ImportJobLeaseLostError`），由其他 Worker 在租约过期后接管。
+- **重试退避**：可重试失败（数据库/对象存储瞬时故障）不改状态，只把 `available_at` 推后
+  `RETRY_BACKOFF_SECONDS = (1, 5, 30)`（按 `attempt_count` 取上限）并释放租约。不可重试失败
+  （载荷、完整性、`object_key` 语义错误）转入终态：校验阶段转 `validation_failed`，发布阶段转
+  `publish_failed`。
+- **失败分类**：`classify_import_job_exception()` 把异常映射为 `(retryable, error_code)`；
+  `ImportObjectStoreError` 不可重试，`SQLAlchemyError`/`OSError` 可重试，载荷解码错误不可重试。
+- **执行内容**：`validating` 任务调用 `CostDataImporter.validate_payload()`，比对载荷哈希与任务
+  `snapshot_hash`；`publishing` 任务调用 `publish_validated_snapshot()`（单事务），成功后写
+  `published_batch_id`。
+- **审计**：校验/发布结果与 `publishing` 开始各追加一条治理审计事件；可重试失败不追加终态事件。
+
+导入任务状态机的合法迁移、幂等与快照不可变性见[治理与质量](../data/governance.md)；
+接口契约见[数据治理契约](../api/data-admin-contract.md)。
+
 ## 生命周期与协议
 
 公开持久化协议固定为 `2.0`，Run 状态机为：
@@ -51,6 +82,6 @@ Runtime 只记录这些调用的元数据与结果状态，不在生命周期层
 
 ## 健康门禁
 
-`/api/livez` 只表示 API 进程可响应；`/api/readyz` 与 `runtime_ready` 同时检查数据库、唯一 Alembic head 和 Worker 心跳，不调用付费模型。前端在 Runtime 不可用时禁止提交，不切换到另一套协议或本地执行。
+`/api/livez` 只表示 API 进程可响应；`/api/readyz` 与 `runtime_ready` 同时检查数据库、Alembic head 和 Worker 心跳，不调用付费模型。前端在 Runtime 不可用时禁止提交，不切换到另一套协议或本地执行。
 
-依据：`backend/app/agent/runtime.py`、`backend/app/agent/runtime_services.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/run_repository.py`、`backend/app/worker.py`。
+依据：`backend/app/agent/runtime.py`、`backend/app/agent/runtime_services.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/run_repository.py`、`backend/app/worker.py`、`backend/app/services/import_job_service.py`、`backend/app/repositories/postgres_import_job_repository.py`。

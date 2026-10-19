@@ -16,8 +16,11 @@ def domain_status_code(code: str) -> int:
         "run_not_found",
         "cost_data_not_found",
         "data_admin_batch_not_found",
+        "import_job_not_found",
     }:
         return 404
+    if code in {"import_payload_invalid"}:
+        return 422
     if code in {
         "artifact_persistence_failed",
         "runtime_unavailable",

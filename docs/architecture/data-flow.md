@@ -3,18 +3,28 @@
 ## 成本导入
 
 ```text
-parts/cost_events/cost_event_inputs/cost_records JSON
-  -> CostDataImporter -> source snapshot SHA-256
-  -> data_load_batches -> field/relation/DAG/business validation
-  -> deterministic roll-up -> finished batch summary/trace projections
-  -> data_load_errors for rejected rows -> transactional publish
-  -> previous published batch becomes superseded
-  -> application reads only the new published snapshot
+POST /api/data-admin/imports  (data_import.submit + Idempotency-Key)
+  -> payload 落本地内容寻址对象存储 -> data_import_jobs (status=submitted)
+Worker: submitted -> validating
+  -> CostDataImporter.validate_payload -> 字段/关系/DAG/业务校验
+  -> 有错 -> data_load_errors + error_summary -> validation_failed (终态)
+  -> 全部通过 -> approval_pending
+管理审批: approval_pending -> approved | rejected (data_import.approve)
+Worker: approved -> publishing
+  -> publish_validated_snapshot 单事务：四类事实 + 确定性卷积投影
+     + 新 published 批次 + 旧 published 转 superseded + 审计
+  -> 成功 -> published；失败整体回滚 -> publish_failed（保留旧快照）
+应用只读当前 published 快照
 ```
 
-JSON 是导入输入，不是应用请求的 Repository。失败批次不可查询；相同租户、来源系统、快照哈希和计算规则版本幂等跳过。事实与成本投影在同一事务发布，任一投影失败都会回滚且保留旧发布快照。导入目标始终是独立 CostGraph PostgreSQL 数据库。
+JSON 是导入输入，不是应用请求的 Repository。HTTP 只创建任务或改变状态；校验、投影生成与发布
+全部由 Worker 完成。相同租户 + 幂等键，或相同租户 + 来源系统 + 快照哈希 + 规则版本，都复用已有任务。
+事实与成本投影在同一事务发布，任一投影失败都会回滚且完整保留旧发布快照；发布失败没有回滚接口。
+`batch_id` 是五张成本事实表主键的一部分，因此每个批次是不可变快照，同一逻辑 ID 可以跨批次重复。
+所有涉及投影的 join 必须额外带 `batch_id` 谓词。导入目标始终是独立 CostGraph PostgreSQL 数据库。
+详细状态机、幂等与对象存储边界见 [治理与质量](../data/governance.md)。
 
-规范样例以汽车装饰件工厂为业务语境。`backend/scripts/generate_sample_cost_data.py` 确定性生成 100 个产成品 SKU、连续 24 个月的可比批次及其公共部件追溯链；它只重建四份 JSON，不绕过校验或直接写库。黄金批次从 PP/EPDM 单件料包与外购卡扣开始，经过注塑成型、火焰处理与表皮包覆、总成装配三道工艺后形成左前门内饰板总成，用于验证多层、多投入成本卷积与追溯。扩展数据和黄金子集均由同一 `CostDataImporter` 作为单一快照校验、发布。
+规范样例以汽车装饰件工厂为业务语境。`backend/scripts/generate_sample_cost_data.py` 确定性生成 100 个产成品 SKU、连续 24 个月的可比批次及其公共部件追溯链；它只重建四份 JSON，不绕过校验或直接写库。黄金批次从 PP/EPDM 单件料包与外购卡扣开始，经过注塑成型、火焰处理与表皮包覆、总成装配三道工艺后形成左前门内饰板总成，用于验证多层、多投入成本卷积与追溯。扩展数据和黄金子集均由同一 `CostDataImporter` 校验，再由 Worker 在审批后的 `publishing` 阶段发布为单一快照。
 
 ## 成本只读查询
 
@@ -29,19 +39,25 @@ HTTP query -> server principal/tenant/data scope
 
 追溯图以最终产成品事件为根向上返回事件节点、投入边和逐笔来源记录。树形 UI 遇到共享上游只显示引用标识；图中的一个事件仍只计算一次，不能因投影成树而重复累计。
 
-## 数据治理只读查询
+## 数据治理与导入任务查询
 
 ```text
-React 数据治理页面
+React 数据治理页面 / CLI
   -> /api/me 权限摘要
-  -> admin + data_management.read policy gate
-  -> /api/data-admin
-     -> tenant-scoped data_load_batches/data_load_errors
-     -> current published batch + current-rule projection integrity gate
-     -> DataScope-scoped fact/projection counts
+  -> 提交：data_import.submit + Idempotency-Key -> 对象存储 -> data_import_jobs
+  -> 查询：data_management.read -> /api/data-admin/imports*
+       任务状态、计数、脱敏错误明细与 error_codes；永不返回载荷
+  -> 审批：data_import.approve -> POST /imports/{job_id}/decision -> approved/rejected
+  -> 批次视图：/api/data-admin/batches* 同时展示快照状态与任务状态；错误的
+       job_status 通过 job_id / published_batch_id 关联
+  -> 发布快照：/api/data-admin/published + /quality
+       仅当前 published batch + 当前规则版本投影完整性门禁 + DataScope 计数
 ```
 
-数据治理接口只读，不触发导入、发布、回滚或重算；错误明细不返回 `raw_payload`，来源文件仅暴露 basename。跨租户批次按未找到处理。发布统计缺少当前规则版本投影、投影为空或规则混合时返回数据库不可用错误，不返回部分可信质量数据。
+导入任务接口只创建任务或改变状态；校验、发布由 Worker 完成；不提供回滚或重算。
+错误明细不返回 `raw_payload`，来源文件仅暴露 basename。跨租户任务与批次按未找到处理（404）。
+发布统计缺少当前规则版本投影、投影为空或规则混合时返回 `503/database_unavailable`，
+不返回部分可信质量数据。完整接口契约见 [数据治理契约](../api/data-admin-contract.md)。
 
 ## Agent 查询与产出
 
@@ -66,4 +82,4 @@ HTTP -> conversation context -> capability/data-scope gate
 
 控制面细节见 [Runtime](runtime.md)、[Harness](harness.md)、[Tool 与 Provider](tool-provider.md) 和 [Event、Trace、Replay 与 Eval](event-trace-replay.md)。
 
-代码锚点：`backend/scripts/generate_sample_cost_data.py`、`backend/app/services/cost_data_import_service.py`、`backend/app/services/cost_data_query_service.py`、`backend/app/domain/cost.py`、`backend/app/services/lineage_service.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/`、`backend/app/worker.py`。
+代码锚点：`backend/scripts/generate_sample_cost_data.py`、`backend/app/services/cost_data_import_service.py`、`backend/app/services/import_job_service.py`、`backend/app/services/import_object_store.py`、`backend/app/services/cost_data_query_service.py`、`backend/app/domain/cost.py`、`backend/app/services/lineage_service.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/`、`backend/app/worker.py`。

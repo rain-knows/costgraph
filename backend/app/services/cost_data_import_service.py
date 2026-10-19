@@ -9,9 +9,9 @@ from decimal import Decimal, InvalidOperation
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,6 @@ from app.db.models import (
     CostEventInput,
     CostRecord,
     DataLoadBatch,
-    DataLoadError,
     FinishedBatchCostProjection,
     Part,
 )
@@ -30,7 +29,7 @@ from app.schemas.cost_data import FinishedBatchCostDetail
 from app.services.cost_calculation_service import calculate_finished_batch_cost
 from app.services.cost_source_builder import build_finished_batch_sources
 
-UPSERT_BATCH_SIZE = 500
+INSERT_BATCH_SIZE = 500
 AMOUNT_INTEGER_DIGITS = 16
 QUANTITY_INTEGER_DIGITS = 14
 
@@ -101,28 +100,6 @@ class ImportErrorItem:
     error_code: str
     error_message: str
     raw_payload: dict[str, Any] | None
-
-
-@dataclass(frozen=True)
-class ImportResult:
-    batch_id: UUID
-    status: str
-    total_rows: int
-    valid_rows: int
-    error_rows: int
-    error_summary: dict[str, Any] | None = None
-    skipped: bool = False
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "batch_id": str(self.batch_id),
-            "status": self.status,
-            "total_rows": self.total_rows,
-            "valid_rows": self.valid_rows,
-            "error_rows": self.error_rows,
-            "error_summary": self.error_summary,
-            "skipped": self.skipped,
-        }
 
 
 def load_records(path: str | Path) -> list[dict[str, Any]]:
@@ -623,11 +600,48 @@ def _validate_unknown_fields(
             )
 
 
+@dataclass(frozen=True)
+class ValidationOutcome:
+    """``validate_payload`` 的只读校验结果，不携带任何批次/发布状态。"""
+
+    snapshot_hash: str
+    total_rows: int
+    valid_rows: int
+    error_rows: int
+    errors: tuple[ImportErrorItem, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "snapshot_hash": self.snapshot_hash,
+            "total_rows": self.total_rows,
+            "valid_rows": self.valid_rows,
+            "error_rows": self.error_rows,
+            "errors": [
+                {
+                    "source_table": item.source_table,
+                    "source_record_id": item.source_record_id,
+                    "error_code": item.error_code,
+                    "error_message": item.error_message,
+                }
+                for item in self.errors
+            ],
+        }
+
+
 class CostDataImporter:
+    """成本快照的纯校验与纯发布服务。
+
+    ``validate_payload`` 只校验，不写任何事实表、批次或时间戳；
+    ``publish_validated_snapshot`` 在单事务内写入四类事实与投影。两者都不
+    保留「按逻辑 ID 覆盖旧批次」的 upsert 语义：``batch_id`` 已经是主键的一
+    部分，同一逻辑 ID 可以稳定地跨批次重复，只有 ``(tenant_id, batch_id, 逻辑
+    ID)`` 冲突才是真正的重复。
+    """
+
     def __init__(self, session_factory=None) -> None:
         self._session_factory = session_factory or get_session_factory()
 
-    def import_records(
+    def validate_payload(
         self,
         *,
         tenant_id: str,
@@ -636,218 +650,151 @@ class CostDataImporter:
         events: list[dict[str, Any]],
         inputs: list[dict[str, Any]],
         records: list[dict[str, Any]],
-        source_file: str | None = None,
-    ) -> ImportResult:
-        payload = {
-            "parts": parts,
-            "cost_events": events,
-            "cost_event_inputs": inputs,
-            "cost_records": records,
-        }
-        snapshot_hash = _canonical_hash(payload)
+    ) -> ValidationOutcome:
+        """只做确定性校验与规范化哈希，不写事实表/批次/时间戳。"""
+        payload = _payload(parts, events, inputs, records)
         errors = _validate_records(parts, events, inputs, records)
         total_rows = sum(len(rows) for rows in payload.values())
+        error_rows = len(
+            {(item.source_table, item.source_record_id) for item in errors}
+        )
+        return ValidationOutcome(
+            snapshot_hash=_canonical_hash(payload),
+            total_rows=total_rows,
+            valid_rows=total_rows - error_rows,
+            error_rows=error_rows,
+            errors=tuple(errors),
+        )
+
+    def publish_validated_snapshot(
+        self,
+        *,
+        tenant_id: str,
+        source_system: str,
+        batch_id: UUID,
+        source_file: str | None = None,
+        source_snapshot_hash: str,
+        calculation_rule_version: str,
+        parts: list[dict[str, Any]],
+        events: list[dict[str, Any]],
+        inputs: list[dict[str, Any]],
+        records: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """把已通过校验的输入发布为不可变快照批次（单事务）。
+
+        旧 ``published`` 批次只在新快照所在事务提交时才转为 ``superseded``，
+        因此发布失败会完整保留原有已发布快照。
+        """
+
+        payload = _payload(parts, events, inputs, records)
+        total_rows = sum(len(rows) for rows in payload.values())
+        if _canonical_hash(payload) != source_snapshot_hash:
+            raise ValueError("载荷与 source_snapshot_hash 不一致。")
         now = datetime.now(UTC)
         session: Session = self._session_factory()
         try:
-            existing = session.scalar(
-                select(DataLoadBatch)
+            session.execute(
+                update(DataLoadBatch)
                 .where(
                     DataLoadBatch.tenant_id == tenant_id,
-                    DataLoadBatch.source_system == source_system,
-                    DataLoadBatch.source_snapshot_hash == snapshot_hash,
-                    DataLoadBatch.calculation_rule_version == CALCULATION_RULE_VERSION,
+                    DataLoadBatch.status == "published",
                 )
-                .order_by(desc(DataLoadBatch.created_at))
+                .values(status="superseded")
             )
-            if existing:
-                session.rollback()
-                return _result(existing, skipped=True)
-            if not errors:
-                errors.extend(
-                    self._validate_existing_event_identity(session, tenant_id, events)
-                )
-            error_rows = len(
-                {(item.source_table, item.source_record_id) for item in errors}
-            )
-            batch_id = uuid4()
             batch = DataLoadBatch(
                 batch_id=batch_id,
                 tenant_id=tenant_id,
                 source_system=source_system,
                 source_file=source_file,
-                source_snapshot_hash=snapshot_hash,
-                calculation_rule_version=CALCULATION_RULE_VERSION,
-                status="failed" if errors else "validated",
+                source_snapshot_hash=source_snapshot_hash,
+                calculation_rule_version=calculation_rule_version,
+                status="published",
                 total_rows=total_rows,
-                valid_rows=total_rows - error_rows,
-                error_rows=error_rows,
-                error_summary={"codes": _summarize(errors)} if errors else None,
+                valid_rows=total_rows,
+                error_rows=0,
+                error_summary=None,
                 started_at=now,
+                finished_at=datetime.now(UTC),
                 created_at=now,
             )
             session.add(batch)
             session.flush()
-            if errors:
-                session.add_all(
-                    DataLoadError(
-                        tenant_id=tenant_id,
-                        batch_id=batch_id,
-                        source_table=item.source_table,
-                        source_record_id=item.source_record_id,
-                        error_code=item.error_code,
-                        error_message=item.error_message,
-                        raw_payload=item.raw_payload,
-                        created_at=now,
-                    )
-                    for item in errors
-                )
-            else:
-                session.execute(
-                    update(DataLoadBatch)
-                    .where(
-                        DataLoadBatch.tenant_id == tenant_id,
-                        DataLoadBatch.status == "published",
-                    )
-                    .values(status="superseded")
-                )
-                self._upsert(
-                    session,
-                    Part,
-                    parts,
-                    tenant_id,
-                    source_system,
-                    batch_id,
-                    now,
-                    "part_id",
-                )
-                self._upsert(
-                    session,
-                    CostEvent,
-                    events,
-                    tenant_id,
-                    source_system,
-                    batch_id,
-                    now,
-                    "event_id",
-                    _event_values,
-                )
-                self._upsert(
-                    session,
-                    CostEventInput,
-                    inputs,
-                    tenant_id,
-                    source_system,
-                    batch_id,
-                    now,
-                    "input_id",
-                    _input_values,
-                )
-                self._upsert(
-                    session,
-                    CostRecord,
-                    records,
-                    tenant_id,
-                    source_system,
-                    batch_id,
-                    now,
-                    "cost_record_id",
-                    _record_values,
-                )
-                self._upsert_projections(
-                    session,
-                    _projection_values(
-                        parts=parts,
-                        events=events,
-                        inputs=inputs,
-                        records=records,
-                        tenant_id=tenant_id,
-                        source_system=source_system,
-                        batch_id=batch_id,
-                        now=now,
-                    ),
-                )
-                batch.status = "published"
-            batch.finished_at = datetime.now(UTC)
+            self._insert(
+                session,
+                Part,
+                parts,
+                tenant_id,
+                source_system,
+                batch_id,
+                now,
+                "part_id",
+            )
+            self._insert(
+                session,
+                CostEvent,
+                events,
+                tenant_id,
+                source_system,
+                batch_id,
+                now,
+                "event_id",
+                _event_values,
+            )
+            self._insert(
+                session,
+                CostEventInput,
+                inputs,
+                tenant_id,
+                source_system,
+                batch_id,
+                now,
+                "input_id",
+                _input_values,
+            )
+            self._insert(
+                session,
+                CostRecord,
+                records,
+                tenant_id,
+                source_system,
+                batch_id,
+                now,
+                "cost_record_id",
+                _record_values,
+            )
+            self._insert_projections(
+                session,
+                _projection_values(
+                    parts=parts,
+                    events=events,
+                    inputs=inputs,
+                    records=records,
+                    tenant_id=tenant_id,
+                    source_system=source_system,
+                    batch_id=batch_id,
+                    now=now,
+                ),
+            )
             session.commit()
-            return _result(batch, skipped=False)
         except Exception:
             session.rollback()
             raise
         finally:
             session.close()
+        return {
+            "batch_id": str(batch_id),
+            "tenant_id": tenant_id,
+            "source_system": source_system,
+            "source_snapshot_hash": source_snapshot_hash,
+            "calculation_rule_version": calculation_rule_version,
+            "status": "published",
+            "total_rows": total_rows,
+            "valid_rows": total_rows,
+            "error_rows": 0,
+        }
 
     @staticmethod
-    def _validate_existing_event_identity(
-        session: Session, tenant_id: str, events: list[dict[str, Any]]
-    ) -> list[ImportErrorItem]:
-        """Reject ambiguous cross-snapshot event identity before publish.
-
-        Events are upserted by ``event_id`` so a normal snapshot refresh may
-        move the same logical event to the new batch.  Reusing an output batch
-        for a different event (or changing an event's output batch while the
-        old batch id belongs to another event) would violate the tenant-wide
-        output-batch uniqueness invariant and otherwise surface as a raw DB
-        ``IntegrityError``.  Turn that case into the same failed-import error
-        contract used by the other validation gates.
-        """
-        output_ids = {
-            _text(row.get("output_batch_id"))
-            for row in events
-            if _text(row.get("output_batch_id"))
-        }
-        event_ids = {
-            _text(row.get("event_id")) for row in events if _text(row.get("event_id"))
-        }
-        if not output_ids and not event_ids:
-            return []
-        existing = session.scalars(
-            select(CostEvent).where(
-                CostEvent.tenant_id == tenant_id,
-                (CostEvent.output_batch_id.in_(output_ids))
-                | (CostEvent.event_id.in_(event_ids)),
-            )
-        ).all()
-        by_output = {row.output_batch_id: row for row in existing}
-        by_event = {row.event_id: row for row in existing}
-        errors: list[ImportErrorItem] = []
-        seen: set[tuple[str, str, str]] = set()
-        for row in events:
-            event_id = _text(row.get("event_id"))
-            output_batch_id = _text(row.get("output_batch_id"))
-            old_by_output = by_output.get(output_batch_id)
-            old_by_event = by_event.get(event_id)
-            if old_by_output is not None and old_by_output.event_id != event_id:
-                key = (event_id, "OUTPUT_BATCH_CONFLICT", output_batch_id)
-                if key not in seen:
-                    errors.append(
-                        _error(
-                            "cost_events",
-                            row,
-                            "OUTPUT_BATCH_CONFLICT",
-                            "输出批次 ID 已属于同租户的其他事件。",
-                        )
-                    )
-                    seen.add(key)
-            if (
-                old_by_event is not None
-                and old_by_event.output_batch_id != output_batch_id
-            ):
-                key = (event_id, "EVENT_OUTPUT_BATCH_CONFLICT", output_batch_id)
-                if key not in seen:
-                    errors.append(
-                        _error(
-                            "cost_events",
-                            row,
-                            "EVENT_OUTPUT_BATCH_CONFLICT",
-                            "事件 ID 已绑定其他输出批次。",
-                        )
-                    )
-                    seen.add(key)
-        return errors
-
-    @staticmethod
-    def _upsert(
+    def _insert(
         session: Session,
         model: Any,
         rows: list[dict[str, Any]],
@@ -877,31 +824,31 @@ class CostDataImporter:
                 }
             )
             values.append(value)
-        statement = pg_insert(model).on_conflict_do_update(
-            index_elements=["tenant_id", identity],
-            set_={
-                key: getattr(pg_insert(model).excluded, key)
-                for key in values[0]
-                if key not in {"tenant_id", identity, "created_at"}
-            },
-        )
-        for start in range(0, len(values), UPSERT_BATCH_SIZE):
-            session.execute(statement, values[start : start + UPSERT_BATCH_SIZE])
+        statement = pg_insert(model)
+        for start in range(0, len(values), INSERT_BATCH_SIZE):
+            session.execute(statement, values[start : start + INSERT_BATCH_SIZE])
 
     @staticmethod
-    def _upsert_projections(session: Session, values: list[dict[str, Any]]) -> None:
+    def _insert_projections(session: Session, values: list[dict[str, Any]]) -> None:
         if not values:
             return
-        statement = pg_insert(FinishedBatchCostProjection).on_conflict_do_update(
-            index_elements=["tenant_id", "event_id"],
-            set_={
-                key: getattr(pg_insert(FinishedBatchCostProjection).excluded, key)
-                for key in values[0]
-                if key not in {"tenant_id", "event_id"}
-            },
-        )
-        for start in range(0, len(values), UPSERT_BATCH_SIZE):
-            session.execute(statement, values[start : start + UPSERT_BATCH_SIZE])
+        statement = pg_insert(FinishedBatchCostProjection)
+        for start in range(0, len(values), INSERT_BATCH_SIZE):
+            session.execute(statement, values[start : start + INSERT_BATCH_SIZE])
+
+
+def _payload(
+    parts: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    inputs: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "parts": parts,
+        "cost_events": events,
+        "cost_event_inputs": inputs,
+        "cost_records": records,
+    }
 
 
 def _projection_values(
@@ -999,22 +946,3 @@ def _record_values(row: dict[str, Any]) -> dict[str, Any]:
     value["amount"] = _decimal(value["amount"])
     value["incurred_at"] = _datetime(value["incurred_at"])
     return value
-
-
-def _summarize(errors: list[ImportErrorItem]) -> dict[str, int]:
-    result: dict[str, int] = {}
-    for item in errors:
-        result[item.error_code] = result.get(item.error_code, 0) + 1
-    return result
-
-
-def _result(batch: DataLoadBatch, *, skipped: bool) -> ImportResult:
-    return ImportResult(
-        batch_id=batch.batch_id,
-        status=batch.status,
-        total_rows=batch.total_rows,
-        valid_rows=batch.valid_rows,
-        error_rows=batch.error_rows,
-        error_summary=batch.error_summary,
-        skipped=skipped,
-    )

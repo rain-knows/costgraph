@@ -6,7 +6,7 @@ from pathlib import PurePath, PureWindowsPath
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_session_factory
@@ -14,6 +14,7 @@ from app.db.models import (
     CostEvent,
     CostEventInput,
     CostRecord,
+    DataImportJob,
     DataLoadBatch,
     DataLoadError,
     FinishedBatchCostProjection,
@@ -67,7 +68,12 @@ class PostgresDataAdminRepository:
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             ).all()
-        return [_batch_dict(row) for row in rows], int(total)
+            job_status = _job_statuses(
+                session, owner.tenant_id, [row.batch_id for row in rows]
+            )
+        return [_batch_dict(row, job_status.get(row.batch_id)) for row in rows], int(
+            total
+        )
 
     def get_batch(
         self, context: ExecutionContext, batch_id: UUID
@@ -91,8 +97,11 @@ class PostgresDataAdminRepository:
                 .group_by(DataLoadError.error_code)
                 .order_by(DataLoadError.error_code)
             ).all()
+            job_status = _job_statuses(session, owner.tenant_id, [batch_id]).get(
+                batch_id
+            )
         return {
-            **_batch_dict(batch),
+            **_batch_dict(batch, job_status),
             "error_codes": [
                 {"error_code": code, "count": count} for code, count in counts
             ],
@@ -170,6 +179,10 @@ class PostgresDataAdminRepository:
                 }
             tenant_id, batch_id = owner.tenant_id, batch.batch_id
             projection = FinishedBatchCostProjection
+            projection_batch = and_(
+                projection.tenant_id == tenant_id,
+                projection.batch_id == batch_id,
+            )
             integrity = session.execute(
                 select(
                     func.count(projection.event_id),
@@ -177,12 +190,12 @@ class PostgresDataAdminRepository:
                     func.min(projection.rule_version),
                     func.max(projection.rule_version),
                     func.count(projection.batch_id.distinct()),
-                ).where(
-                    projection.tenant_id == tenant_id,
-                    projection.batch_id == batch_id,
-                )
+                ).where(projection_batch)
             ).one()
             projection_rows_all, rule_count, min_rule, max_rule, batch_count = integrity
+            # 投影表带有 batch_id 列但不引用成本事件，因此不能按 event_id 匿名
+            # join：必须带 ``batch_id`` 谓词，否则会跨批次命中。这里的等价判断
+            # 是「当前快照的投影事件中，有多少在事件表里不属于本批次」。
             mismatched_event_rows = (
                 session.scalar(
                     select(func.count())
@@ -191,12 +204,12 @@ class PostgresDataAdminRepository:
                         CostEvent,
                         and_(
                             CostEvent.tenant_id == projection.tenant_id,
+                            CostEvent.batch_id == projection.batch_id,
                             CostEvent.event_id == projection.event_id,
                         ),
                     )
                     .where(
-                        projection.tenant_id == tenant_id,
-                        projection.batch_id == batch_id,
+                        projection_batch,
                         CostEvent.batch_id != batch_id,
                     )
                 )
@@ -252,6 +265,7 @@ class PostgresDataAdminRepository:
                             CostEvent,
                             and_(
                                 CostEvent.tenant_id == CostEventInput.tenant_id,
+                                CostEvent.batch_id == CostEventInput.batch_id,
                                 CostEvent.event_id == CostEventInput.event_id,
                             ),
                         )
@@ -271,6 +285,7 @@ class PostgresDataAdminRepository:
                             CostEvent,
                             and_(
                                 CostEvent.tenant_id == CostRecord.tenant_id,
+                                CostEvent.batch_id == CostRecord.batch_id,
                                 CostEvent.event_id == CostRecord.event_id,
                             ),
                         )
@@ -292,7 +307,16 @@ class PostgresDataAdminRepository:
                 ).where(scoped_projection)
             ).one()
         return {
-            "batch": _batch_dict(batch),
+            "batch": (
+                _batch_dict(
+                    batch,
+                    _job_statuses(session, owner.tenant_id, [batch.batch_id]).get(
+                        batch.batch_id
+                    ),
+                )
+                if batch is not None
+                else None
+            ),
             "fact_rows": fact_rows,
             "projection_rows": int(stats[0]),
             "part_count": int(stats[1]),
@@ -302,10 +326,11 @@ class PostgresDataAdminRepository:
         }
 
 
-def _batch_dict(row: DataLoadBatch) -> dict[str, Any]:
+def _batch_dict(row: DataLoadBatch, job_status: str | None = None) -> dict[str, Any]:
     return {
         "batch_id": row.batch_id,
         "status": row.status,
+        "job_status": job_status,
         "source_system": row.source_system,
         "source_file": _safe_source_file(row.source_file),
         "source_snapshot_hash": row.source_snapshot_hash,
@@ -317,6 +342,37 @@ def _batch_dict(row: DataLoadBatch) -> dict[str, Any]:
         "finished_at": row.finished_at,
         "created_at": row.created_at,
     }
+
+
+def _job_statuses(session, tenant_id: str, batch_ids: list[UUID]) -> dict[UUID, str]:
+    """按批次展示对应的导入任务状态（规格第 4 节：任务状态 + 快照状态）。
+
+    已发布批次的 ``batch_id`` 等于任务的 ``published_batch_id``；校验失败批次的
+    ``batch_id`` 等于任务 ``job_id``。两者都是同一租户下的关联，因此查询始终
+    带 ``tenant_id`` 边界。
+    """
+    if not batch_ids:
+        return {}
+    rows = session.execute(
+        select(
+            DataImportJob.job_id,
+            DataImportJob.published_batch_id,
+            DataImportJob.status,
+        ).where(
+            DataImportJob.tenant_id == tenant_id,
+            or_(
+                DataImportJob.job_id.in_(batch_ids),
+                DataImportJob.published_batch_id.in_(batch_ids),
+            ),
+        )
+    ).all()
+    mapping: dict[UUID, str] = {}
+    for job_id, published_batch_id, status in rows:
+        if job_id in batch_ids:
+            mapping[job_id] = status
+        if published_batch_id in batch_ids:
+            mapping[published_batch_id] = status
+    return mapping
 
 
 def _projection_scope(model, context: ExecutionContext) -> list[Any]:

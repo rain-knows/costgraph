@@ -100,9 +100,11 @@ def _client(principal):
     return TestClient(app)
 
 
-def test_user_is_denied_on_every_data_admin_endpoint_and_me_is_safe():
+def test_viewer_is_denied_on_every_data_admin_endpoint_and_me_is_safe():
     client = _client(
-        ExecutionPrincipal(principal_id="user", tenant_id="tenant-a", roles=("user",))
+        ExecutionPrincipal(
+            principal_id="viewer", tenant_id="tenant-a", roles=("viewer",)
+        )
     )
     for path in (
         "/api/data-admin/batches",
@@ -117,14 +119,16 @@ def test_user_is_denied_on_every_data_admin_endpoint_and_me_is_safe():
         assert response.headers["X-Request-ID"]
     me = client.get("/api/me")
     assert me.status_code == 200
-    assert me.json()["roles"] == ["user"]
-    assert me.json()["permissions"] == []
+    assert me.json()["roles"] == ["viewer"]
+    assert me.json()["permissions"] == ["cost_data.read"]
     assert "tenant_id" not in me.json()
 
 
-def test_admin_reads_tenant_scoped_batches_snapshot_and_errors():
+def test_tenant_admin_reads_tenant_scoped_batches_snapshot_and_errors():
     client = _client(
-        ExecutionPrincipal(principal_id="admin", tenant_id="tenant-a", roles=("admin",))
+        ExecutionPrincipal(
+            principal_id="tenant-admin", tenant_id="tenant-a", roles=("tenant_admin",)
+        )
     )
     batches = client.get("/api/data-admin/batches?page=1&page_size=10")
     detail = client.get(f"/api/data-admin/batches/{BATCH_ID}")
@@ -150,7 +154,7 @@ def test_admin_reads_tenant_scoped_batches_snapshot_and_errors():
 def test_database_factory_error_is_stable_503(monkeypatch):
     client_app = create_app()
     client_app.dependency_overrides[get_server_principal] = lambda: ExecutionPrincipal(
-        principal_id="admin", tenant_id="tenant-a", roles=("admin",)
+        principal_id="tenant-admin", tenant_id="tenant-a", roles=("tenant_admin",)
     )
     client_app.dependency_overrides[get_data_admin_service] = lambda: DataAdminService()
     monkeypatch.setattr(
@@ -172,9 +176,11 @@ def test_source_and_error_details_are_redacted():
     assert canary not in _safe_error_message(f"password={canary} /srv/{canary}.json")
 
 
-def test_admin_cannot_cross_tenant_boundary():
+def test_tenant_admin_cannot_cross_tenant_boundary():
     client = _client(
-        ExecutionPrincipal(principal_id="admin", tenant_id="tenant-b", roles=("admin",))
+        ExecutionPrincipal(
+            principal_id="tenant-admin", tenant_id="tenant-b", roles=("tenant_admin",)
+        )
     )
     assert client.get(f"/api/data-admin/batches/{BATCH_ID}").status_code == 404
     assert client.get(f"/api/data-admin/batches/{BATCH_ID}/errors").status_code == 404

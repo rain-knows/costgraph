@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from functools import cache
+from pathlib import Path
 from typing import Any
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -12,8 +16,19 @@ from app.db.models import Base, RuntimeAgentWorker
 from app.repositories.run_repository import utc_now
 from app.settings import AppSettings, get_settings
 
-EXPECTED_ALEMBIC_HEAD = "20260907_0001"
+ALEMBIC_SCRIPT_DIRECTORY = Path(__file__).resolve().parents[2] / "alembic"
 LOGGER = logging.getLogger(__name__)
+
+
+@cache
+def expected_alembic_head() -> str:
+    """从 Alembic 迁移脚本目录推导当前 head，避免把版本号硬编码在运行时代码里。"""
+    config = Config()
+    config.set_main_option("script_location", str(ALEMBIC_SCRIPT_DIRECTORY))
+    heads = ScriptDirectory.from_config(config).get_heads()
+    if len(heads) != 1:
+        raise RuntimeError(f"Alembic 迁移必须只有一个 head，实际为：{heads}")
+    return heads[0]
 
 
 def health_snapshot(settings: AppSettings | None = None) -> dict[str, Any]:
@@ -99,7 +114,7 @@ def _migration_status() -> str:
                     text("SELECT version_num FROM alembic_version")
                 )
             }
-            if current != {EXPECTED_ALEMBIC_HEAD}:
+            if current != {expected_alembic_head()}:
                 return "behind"
             # A revision stamp alone cannot detect an outdated development
             # baseline. Reflect required tables/columns without reading data.

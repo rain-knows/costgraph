@@ -1,6 +1,6 @@
 # CostGraph 项目事实文档
 
-本目录是项目事实的唯一文档入口。文档按责任边界拆成可独立读取和更新的原子文件；当前代码、唯一 Alembic baseline、自动化测试和实际运行结果是事实依据，迁移源、聊天记录、截图和未验收计划只能作为线索。
+本目录是项目事实的唯一文档入口。文档按责任边界拆成可独立读取和更新的原子文件；当前代码、Alembic 迁移（baseline + 增量）、自动化测试和实际运行结果是事实依据，迁移源、聊天记录、截图和未验收计划只能作为线索。
 
 ## 按问题查阅
 
@@ -19,9 +19,12 @@
 | 会话、Run、SSE、Artifact 和错误 | [API/Agent 契约](api/agent-contract.md) | `api/agent-contract.md` |
 | 总览、产成品批次列表与成本追溯详情 | [API/成本数据契约](api/cost-data-contract.md) | `api/cost-data-contract.md` |
 | 数据治理、批次质量和发布快照只读接口 | [API/数据治理契约](api/data-admin-contract.md) | `api/data-admin-contract.md` |
+| 角色、权限与 IAM 计划接口（批次 2，尚未实现） | [API/IAM 契约（计划）](api/iam-contract.md) | `api/iam-contract.md` |
 | 启动、迁移、导入、验证和排障 | [运行手册](operations/runbook.md) | `operations/runbook.md` |
 | 如何维护文档与同步规则 | [文档治理](governance/documentation.md) | `governance/documentation.md`、必要时根 `AGENTS.md` |
 | 本次迁移阶段、状态和证据 | [迁移执行记录](plans/agent-demo-to-costgraph.md) | 仅在状态或证据变化时更新 |
+| 二期批次 1 执行契约（唯一事实来源） | [二期批次 1 权威规格](plans/data-governance-phase2-batch1-spec.md) | 仅在批次范围冻结变化时更新 |
+| 数据管理面板与权限治理的批次划分 | [数据管理面板与权限治理](plans/data-management-and-permission-governance.md) | 仅在批次完成或范围变化时更新 |
 
 界面设计另以根 [`DESIGN.md`](../DESIGN.md) 为入口；上游设计包 provenance 见
 [`design-systems/ibm/UPSTREAM.md`](../design-systems/ibm/UPSTREAM.md)。
@@ -30,7 +33,7 @@
 
 1. 当前运行中的 API、数据库查询和通过的集成测试。
 2. `backend/app/` 与 `frontend/src/` 当前实现和类型。
-3. `backend/alembic/versions/` 中唯一 baseline。
+3. `backend/alembic/versions/` 中以 `20260907_0001_costgraph_baseline.py` 为根节点、最新 head 可达的迁移链。
 4. 本目录原子事实文档。
 5. `docs/plans/` 中明确标注的计划和执行记录。
 

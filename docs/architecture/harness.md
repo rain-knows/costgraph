@@ -4,7 +4,52 @@
 
 `AgentHarness` 是无状态策略与工具控制器，负责规范化请求、构造最小上下文、计算能力交集、暴露允许的工具并在每次调用前重新校验。它不拥有 LangGraph State、Run 持久化、会话事务或金额公式。
 
-服务端主体角色固定为 `user` 与 `admin`。`user` 拥有普通只读能力，`admin` 额外拥有业务权限 `data_management.read`。数据治理 Router 使用独立 permission gate，不注册为 Agent tool；`/api/me` 只返回有效能力和角色授权权限摘要，不暴露租户标识或配置秘密。空、重复或未知角色配置会在主体构造时失败。
+## 角色与权限分类法（当前）
+
+服务端主体角色为四个：`viewer`、`data_operator`、`data_approver`、`tenant_admin`。
+`user`/`admin` 别名已删除，无兼容回退。角色 -> 权限是代码确定性映射（`ROLE_PERMISSIONS`）：
+
+```text
+viewer        -> cost_data.read
+data_operator -> cost_data.read, data_management.read, data_import.submit
+data_approver -> cost_data.read, data_management.read, data_import.approve, audit.read
+tenant_admin  -> 全部 7 个权限
+```
+
+`PermissionId` 共 7 个：`cost_data.read`、`data_management.read`、`data_import.submit`、
+`data_import.approve`、`iam.manage`、`data_scope.manage`、`audit.read`。
+`ALL_PERMISSION_IDS` 覆盖全部 7 个；`_authorized_permissions()` 按角色并集计算。
+`iam.manage` 与 `data_scope.manage` 已在分类法中冻结，但本批次没有对应的 IAM 接口，
+见 [IAM 契约](../api/iam-contract.md)。
+
+`ROLE_CAPABILITIES` 让四个角色都拥有 `system_help`、`cost_calculation`、`report_generation`；
+`backend/app/agent/capabilities.py` 中 `CapabilitySpec.required_roles` 必须与之一致，
+否则模块导入时 `_validate_capability_role_metadata()` 会抛 `RuntimeError`。运行时授权只用
+一个权威角色映射，能力元数据不能单独授予权限。
+
+默认开发角色为 `viewer`（`backend/app/settings.py` 的 `agent_principal_roles`）；
+未知、空或重复的 `AGENT_PRINCIPAL_ROLES` 在主体构造时失败。本批次仍由配置注入主体
+（`AGENT_PRINCIPAL_ID`/`AGENT_TENANT_ID`/`AGENT_PRINCIPAL_ROLES`），身份替换属批次 2。
+`AGENT_SERVER_ALLOWED_PERMISSIONS` 不在本批次引入，`server_allowed_permissions` 保持全部 7 个权限。
+
+## 授权门
+
+数据治理 Router 使用独立 permission gate，不注册为 Agent tool；`/api/me` 只返回有效能力与角色
+授权权限摘要，不暴露配置秘密。空、重复或未知角色配置会在主体构造时失败。
+
+服务入口各自构造只请求所需权限的 `ExecutionContext` 并调用 `require_permission()`：
+
+```text
+/batches, /batches/{id}, /batches/{id}/errors, /published, /quality  -> data_management.read
+GET  /imports, GET /imports/{job_id}, GET /imports/{job_id}/errors   -> data_management.read
+POST /imports                                                       -> data_import.submit
+POST /imports/{job_id}/decision                                     -> data_import.approve
+POST /imports/{job_id}/cancel                                       -> data_import.submit
+```
+
+权限不足映射为稳定的 403；错误码按权限区分：`data_management_access_denied`、
+`data_import_submit_access_denied`、`data_import_approve_access_denied`。
+客户端不能提交 principal、tenant、role、permission 或 data scope。
 
 有效能力固定为：
 
@@ -38,6 +83,6 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 - 未授权映射为稳定的 `tool_access_denied`；未知工具或输入/输出契约错误映射为 `tool_validation_error`。
 - 公开错误摘要不包含完整参数、SQL、路径、模型正文、密钥或成本来源记录 ID。业务成本详情的 `CostTraceGraph.records` 只在授权的成本详情响应中返回，不能进入 Agent 公开事件或模型 Trace。
 
-数据治理查询由服务端固定请求 `data_management.read`，在服务入口重新计算授权；从 checkpoint 恢复执行上下文时只接受与当前服务端主体一致的主体和 requested 集合，重新计算角色授权、server allowlist 和 DataScope；主体、租户或角色不一致时 fail-closed，不能通过伪造 effective 字段扩大范围。
+数据治理查询与导入操作都在服务入口重新计算授权：查询固定请求 `data_management.read`，提交与取消固定请求 `data_import.submit`，审批固定请求 `data_import.approve`。从 checkpoint 恢复执行上下文时只接受与当前服务端主体一致的主体和 requested 集合，重新计算角色授权、server allowlist 和 DataScope；主体、租户或角色不一致时 fail-closed，不能通过伪造 effective 字段扩大范围。
 
-依据：`backend/app/agent/harness.py`、`backend/app/agent/context.py`、`backend/app/agent/capabilities.py`、`backend/app/domain/authorization.py`、`backend/app/services/data_admin_service.py`。
+依据：`backend/app/agent/harness.py`、`backend/app/agent/context.py`、`backend/app/agent/capabilities.py`、`backend/app/domain/authorization.py`、`backend/app/services/data_admin_service.py`、`backend/app/services/import_job_service.py`。

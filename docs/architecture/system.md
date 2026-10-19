@@ -29,6 +29,10 @@ React/Vite
      -> deterministic DAG validation, convolution and aggregation
   -> FastAPI read-only data-admin API (admin/data_management.read)
      -> tenant-scoped batch metadata, error summaries and published quality snapshot
+  -> FastAPI data-admin import API (data_import.submit / data_import.approve)
+     -> PostgreSQL import job queue -> independent worker
+        -> validate payload -> approval gate -> publish immutable snapshot
+        -> facts + projections + published status + append-only audit in one transaction
 ```
 
 样例 JSON 只能由导入脚本写入新的 CostGraph 数据库；应用请求不以 JSON、SQLite 或内存产出作为运行时后端，也不读取迁移源数据库。当前规范样例使用汽车装饰件工厂数据，黄金批次通过原料购置、注塑成型、表面包覆和总成装配事件形成多层实际投入图。
@@ -40,11 +44,11 @@ React/Vite
 | `frontend/src` | 导航、查询、会话、SSE 状态、成本与报表展示 | 授权、金额计算、数据库直连 |
 | `backend/app/api` | HTTP/SSE、Pydantic 参数校验、错误映射 | 最终授权和金额事实 |
 | `backend/app/domain` | 主体、数据范围、48 项费用代码、成本卷积和报表领域模型 | SQL 与 UI 状态 |
-| `backend/app/services` | 会话、导入、DAG 校验、卷积、追溯和产出用例 | 接受客户端金额、图关系或权限为事实 |
+| `backend/app/services` | 会话、导入、DAG 校验、卷积、追溯、产出用例和导入任务状态机 | 接受客户端金额、图关系或权限为事实 |
 | `backend/app/agent` | Runtime/Harness、注册表、路由、澄清和 LangGraph 编排 | 绕过策略、生成可信金额、启动第二套循环 |
-| `backend/app/repositories` | PostgreSQL 查询、owner 过滤、Run 租约和幂等写入 | 修改业务公式 |
+| `backend/app/repositories` | PostgreSQL 查询、owner 过滤、Run/ImportJob 租约和幂等写入 | 修改业务公式 |
 | `backend/app/db` | SQLAlchemy 模型、连接与 schema 边界 | 业务流程编排 |
-| `backend/app/worker.py` | Run 抢占、续租、重试、checkpoint 恢复和终态提交 | HTTP 身份认证或金额计算 |
+| `backend/app/worker.py` | Run 与 ImportJob 抢占、续租、重试、checkpoint 恢复、校验和发布终态提交 | HTTP 身份认证或金额计算 |
 
 ## Agent 主流程
 
@@ -60,6 +64,10 @@ load conversation context -> policy gate -> select route
 ## 核心不变量
 
 - `effective_capabilities = requested ∩ role_permissions ∩ server_allowlist`。
+- 主体身份在运行边界绑定：Run 创建时固化 `principal_id`、`tenant_id` 和 `roles`，Worker 只用该快照，不重新解析客户端身份。从状态恢复上下文时 `execution_context_from_state()` 重新推导授权，只有传入 `authoritative_principal` 才做身份一致性校验；API 传当前主体，Worker 传 Run 中固化的主体。
+- 每个 `batch_id` 是不可变快照：成本事实与投影表把批次纳入主键，同一逻辑 ID 不再跨批次覆盖；旧 `published` 快照只在新快照事务提交后变为 `superseded`。
+- 导入任务状态机固定为 `submitted -> validating -> validation_failed | approval_pending -> approved | rejected -> publishing -> published | publish_failed`；`submitted`、`validating`、`approval_pending` 可取消，发布失败保留原已发布快照并允许同一已批准任务重试，不提供回滚接口。
+- HTTP 导入接口只创建任务或改变状态；校验、投影生成和发布全部由 Worker 在单事务中完成，未完成审批的任务不可发布。
 - 所有金额使用 Python `Decimal` 计算；模型文本和前端计算不能覆盖结构化金额。
 - 成本读取匹配租户、当前 `published` 快照、产成品零件、期间和服务端数据范围。
 - 一个购置或工艺事件只生成一个输出批次；事件投入边组成无环图，累计金额只由服务端按拓扑序计算，不作为第二份事实落库。

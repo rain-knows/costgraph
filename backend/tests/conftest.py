@@ -8,8 +8,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 os.environ.setdefault("APP_ENV", "test")
-os.environ.setdefault("DEEPSEEK_API_KEY", "")
-os.environ["AGENT_PRINCIPAL_ROLES"] = "user"
+# 测试一律离线：非空占位值才能盖过 backend/.env 里的真实 Key
+# （SettingsConfigDict 的 env_ignore_empty 会跳过空字符串），
+# 而含 placeholder 的值会被确定性判定为不可用。
+os.environ["DEEPSEEK_API_KEY"] = "offline-test-placeholder"
+os.environ["AGENT_PRINCIPAL_ROLES"] = "viewer"
 os.environ.setdefault(
     "AGENT_SERVER_ALLOWED_CAPABILITIES",
     "system_help,cost_calculation,report_generation",

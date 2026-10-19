@@ -4,13 +4,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from app.db.models import Base
 from app.schemas.cost_data import FinishedBatchCostDetail
 from app.services.cost_calculation_service import calculate_finished_batch_cost
 from app.services.cost_data_import_service import (
+    CostDataImporter,
     _canonical_hash,
     _projection_values,
-    _validate_records,
     load_records,
 )
 from app.services.cost_source_builder import build_finished_batch_sources
@@ -28,6 +30,26 @@ def _snapshot() -> tuple[list[dict], list[dict], list[dict], list[dict]]:
             "cost_records.json",
         )
     )  # type: ignore[return-value]
+
+
+def _validate(parts, events, inputs, records):
+    return CostDataImporter(
+        session_factory=_unavailable_session_factory()
+    ).validate_payload(
+        tenant_id="test-tenant",
+        source_system="costgraph_samples",
+        parts=parts,
+        events=events,
+        inputs=inputs,
+        records=records,
+    )
+
+
+def _unavailable_session_factory():
+    def factory():  # pragma: no cover - only reached on a purity violation
+        raise AssertionError("validate_payload 不得访问数据库或写入事实表。")
+
+    return factory
 
 
 def test_cost_metadata_contains_v2_governed_fact_tables() -> None:
@@ -54,8 +76,49 @@ def test_cost_metadata_contains_v2_governed_fact_tables() -> None:
 
 def test_sample_files_are_valid_import_snapshot() -> None:
     parts, events, inputs, records = _snapshot()
-    errors = _validate_records(parts, events, inputs, records)
-    assert errors == [], [(item.error_code, item.error_message) for item in errors]
+    outcome = _validate(parts, events, inputs, records)
+    assert outcome.errors == (), [
+        (item.error_code, item.error_message) for item in outcome.errors
+    ]
+    assert outcome.error_rows == 0
+    assert outcome.total_rows == outcome.valid_rows
+
+
+def test_validate_payload_is_pure_and_returns_canonical_hash() -> None:
+    """``validate_payload`` 只校验：即使注入不可用 session factory 也不失败。
+
+    这是规格 6.1 的分层契约——校验不写事实表、不写批次、不发布时间戳。
+    """
+    parts, events, inputs, records = _snapshot()
+    outcome = _validate(parts, events, inputs, records)
+    expected = _canonical_hash(
+        {
+            "parts": parts,
+            "cost_events": events,
+            "cost_event_inputs": inputs,
+            "cost_records": records,
+        }
+    )
+    assert outcome.snapshot_hash == expected
+
+
+def test_publish_validated_snapshot_rejects_mismatched_hash_before_any_write() -> None:
+    parts, events, inputs, records = _snapshot()
+    with pytest.raises(ValueError, match="source_snapshot_hash"):
+        CostDataImporter(
+            session_factory=_unavailable_session_factory()
+        ).publish_validated_snapshot(
+            tenant_id="test-tenant",
+            source_system="costgraph_samples",
+            batch_id=uuid4(),
+            source_file="snapshot.json",
+            source_snapshot_hash="0" * 64,
+            calculation_rule_version="cost-rollup-v2",
+            parts=parts,
+            events=events,
+            inputs=inputs,
+            records=records,
+        )
 
 
 def test_sample_projection_matches_direct_calculation_for_every_finished_batch() -> (
@@ -173,9 +236,11 @@ def test_import_validation_rejects_currency_and_missing_event() -> None:
     bad_records[0]["currency"] = "USD"
     bad_records[0]["event_id"] = "E-NOT-FOUND"
 
-    errors = _validate_records(parts, events, inputs, bad_records)
-    codes = {item.error_code for item in errors}
+    outcome = _validate(parts, events, inputs, bad_records)
+    codes = {item.error_code for item in outcome.errors}
     assert {"UNSUPPORTED_CURRENCY", "EVENT_NOT_FOUND"}.issubset(codes)
+    assert outcome.error_rows >= 1
+    assert outcome.valid_rows < outcome.total_rows
 
 
 def test_import_validation_rejects_period_mismatch_and_unknown_cost_code() -> None:
@@ -185,10 +250,32 @@ def test_import_validation_rejects_period_mismatch_and_unknown_cost_code() -> No
     bad_records = [deepcopy(records[0])]
     bad_records[0]["cost_code"] = "not_a_cost_code"
 
-    errors = _validate_records(parts, bad_events, inputs, bad_records)
-    codes = {item.error_code for item in errors}
+    outcome = _validate(parts, bad_events, inputs, bad_records)
+    codes = {item.error_code for item in outcome.errors}
     assert "PERIOD_DATE_MISMATCH" in codes
     assert "UNKNOWN_COST_CODE" in codes
+
+
+def test_import_validation_is_deterministic_and_carries_no_raw_errors() -> None:
+    """校验结果只暴露错误码/来源标识，不携带原始载荷。"""
+    parts, events, inputs, records = _snapshot()
+    bad_events = deepcopy(events)
+    bad_events[0]["qualified_quantity"] = "-1"
+    as_dict = _validate(parts, bad_events, inputs, records).as_dict()
+    assert set(as_dict) == {
+        "snapshot_hash",
+        "total_rows",
+        "valid_rows",
+        "error_rows",
+        "errors",
+    }
+    for item in as_dict["errors"]:
+        assert set(item) == {
+            "source_table",
+            "source_record_id",
+            "error_code",
+            "error_message",
+        }
 
 
 def test_snapshot_hash_is_independent_of_row_order() -> None:
