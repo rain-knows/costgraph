@@ -74,6 +74,17 @@ floating section card.
   holding `data_management.read`, stays read-only for batch, quality, and
   snapshot data, uses dense horizontally scrollable tables, and never renders
   rollback, delete, edit, or raw-payload controls.
+- The governance workspace is split by permission, not by convenience: import
+  submission (`/data-admin/imports/new`, `data_import.submit`), the job list and
+  job detail (`/data-admin/imports`, `data_management.read`), identity and scope
+  management (`/iam`, `iam.manage`), and audit search (`/audit`, `audit.read`).
+  Job detail actions follow the server-returned `status`; approval and
+  cancellation controls appear only where the state machine permits them and
+  only for principals holding the matching permission.
+- A failed publish is never presented as a recoverable client action. The
+  surface states that the previously published snapshot is unchanged and that
+  the Worker retries under its own lease, and the retry control is disabled
+  rather than pointing at an endpoint that does not exist.
 - Authentication is part of the interaction truth. The workspace obtains an
   access token only through OIDC Authorization Code + PKCE, keeps it in memory
   for the lifetime of the tab, and never persists it to `localStorage`,

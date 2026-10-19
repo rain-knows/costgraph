@@ -229,14 +229,15 @@ git diff --check
 
 `check_docs_sync.ps1` 默认只比较本工作树未提交改动，因此本地跑它必须保留工作区改动。CI 在干净检出上运行，此时它读取 `DOCS_SYNC_BASE_REF`（PR 基分支 SHA 或推送前 SHA）改为比较 `ref...HEAD`；首次推送或手动触发时该 ref 无法解析，脚本会警告并退回本地 diff 行为，不因基准缺失而失败。同一门禁由 `.github/workflows/ci.yml` 的 `docs` job 在 windows-latest 上执行。
 
-CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 3 个 skip，与下述验证矩阵一致。
+CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 skip，与下述验证矩阵一致。当前本地基线为 `247 passed, 12 skipped`，12 个 skip 全部是未配置 `TEST_COST_DATABASE_URL` 的 PostgreSQL 用例：`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_rls_postgres.py`（4）。
 
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
 - 导入任务测试覆盖状态机全部合法/非法迁移、幂等提交、重复快照返回已有任务、取消、租约过期、重试退避、审批与发布事务原子性、新旧快照并存、跨租户隔离，以及审计不可修改且不含载荷。
+- 身份与治理测试覆盖 OIDC 签名、`iss`、`aud`、过期令牌、缺失 claim、令牌角色与本地成员关系取交集、角色权限矩阵、数据范围隔离、401/403/404 语义与审计写入；`test_rls_postgres.py` 以受限角色 `costgraph_app` 在真实 PostgreSQL 上验证越权读写被策略拦截。
 - 成本测试覆盖多投入、部分领用、同批次分流、不良成本承接、全量领用尾差、三视图恒等式和黄金结果。
 - PostgreSQL 集成覆盖发布、数据范围、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。未配置 `TEST_COST_DATABASE_URL` 导致的 skip 必须单独报告。
 - 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `3.0`、`presentation/period_comparison` 两种样式、`report_generation` 能力路由和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
-- 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态。
+- 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态，并覆盖导入任务列表与详情（审批、拒绝原因、取消、校验错误分页、发布失败重试说明）、提交向导（非法载荷不发请求、幂等重复分支）、IAM（角色与范围保存、期间起止拦截）与审计查询（结果徽章、筛选写入 URL）。
 - 生产构建必须通过 bundle 门禁，初始 JS 小于 500 KB；页面与 ECharts 保持路由级懒加载。
 - 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。展示型报表可用仓库根目录的 `scripts/verify_reports_browser.ps1` 执行真实 Chromium CDP 验收；脚本输出 `.pi/goals/evidence/reports-browser/result.json` 和四种状态截图，并检查真实 ECharts canvas、横向溢出、报表关键区块和数量小数显示。
 
@@ -261,3 +262,18 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
   三者不得退化成"空数据"。
 - 配置项为 `VITE_OIDC_ISSUER`、`VITE_OIDC_CLIENT_ID`、`VITE_OIDC_REDIRECT_URI`、`VITE_OIDC_SCOPE`，
   见 `frontend/.env.example`。
+
+## 治理工作区手动验收
+
+前端治理页面按权限拆分，路由与页面对应关系见 [数据/治理与质量](../data/governance.md)。
+手动验收至少覆盖：
+
+1. 以缺 `data_import.submit` 的主体直接访问 `/data-admin/imports/new`，必须渲染无权限面板；
+   以有该权限的主体提交一个非法 JSON，必须就地报错且不发请求。
+2. 提交合法载荷得到 `approval_pending`；用缺 `data_import.approve` 的主体打开同一任务详情，
+   页面不得出现审批与拒绕按钮，也不得显示为空外壳。
+3. 以 `data_import.approve` 主体拒绝一次（原因必填）并确认审计页出现 `rejected`；
+   再批准另一次并在 Worker 完成后确认 `published` 与 `published_batch_id` 跳转可用。
+4. 访问一个属于其他租户的 `job_id`，必须渲染“不存在或不属于当前租户”，不得泄露其他租户信息。
+5. 在 `/iam` 把某主体的期间起止颠倒，前端必须拦截且不发 `PUT`。
+6. 浅/深主题与窄屏下逐一复查上述页面，确认表格横向滚动、工具栏不位移、键盘可达。

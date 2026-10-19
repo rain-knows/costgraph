@@ -79,16 +79,26 @@ Authorization: Bearer
 - 测试：`backend/tests/test_oidc_and_iam.py` 覆盖签名、issuer、audience、过期、错误 claim、
   缺失令牌、角色矩阵与审计写入；全量 `pytest` 共 247 passed / 8 skipped。
 
-## 二期批次 2B（进行中）：数据库 RLS 租户隔离
+## 二期批次 2B（已完成，当前能力）：数据库 RLS 租户隔离
 
-设计已冻结，实现与验证状态以交付说明为准：
+交付提交点 `feat(security): 租户级行级安全与应用角色隔离`。
 
-- 严格租户策略覆盖 13 张数据表（`USING (tenant_id = current_setting('app.tenant_id', true))`）；
-- 只有 `cost_data.data_import_jobs` 与 `agent_runtime.agent_runs` 两张调度表允许
-  `costgraph_worker` 角色跨租户读取待领取工作；
-- 子表 `messages`/`agent_run_events` 经父表判租户；`agent_workers` 与 checkpoint 四张表不加 RLS；
-- Worker 领取后必须用被领取行的 `tenant_id` 注入会话，避免“Worker 角色”变成跨租户后门；
-- 未设置 `app.tenant_id` 时策略返回 0 行（fail-closed）。
+已交付事实（可回指迁移、代码与测试）：
+
+- 迁移 `backend/alembic/versions/20260920_0004_rls_tenant_isolation.py` 为数据表启用租户策略
+  `USING (tenant_id = current_setting('app.tenant_id', true))`，未设置 `app.tenant_id` 时策略
+  返回 0 行（fail-closed）；策略用 `ENABLE` 而非 `FORCE`，表所有者不受约束。
+- 只有调度表（`cost_data.data_import_jobs`、`agent_runtime.agent_runs`）允许
+  `costgraph_worker` 角色跨租户读取待领取工作；子表 `messages`/`agent_run_events` 经父表
+  判租户；`agent_workers` 与 checkpoint 系列表不加策略。
+- `backend/app/db/tenant.py`：`set_tenant()`/`release_session()` 按请求设置并清理会话级
+  `app.tenant_id`。会话依赖在 FastAPI 同步依赖的拷贝上下文中执行，因此以会话对象本身
+  传递租户，不用 ContextVar。
+- Worker 领取任务后用被领取行的 `tenant_id` 注入会话，Worker 角色不会变成跨租户后门。
+- `backend/app/db/engine.py` 暴露 `get_session_factory()`/`reset_engine()`；应用角色连接串
+  单独配置。
+- 测试 `backend/tests/test_rls_postgres.py` 以受限角色 `costgraph_app` 连接真实
+  PostgreSQL，验证越权读写被策略拦截；未配置 `TEST_COST_DATABASE_URL` 时跳过。
 
 ## 二期批次 2C（进行中）：前端治理工作区
 

@@ -8,6 +8,9 @@ export function buildBreadcrumbs(pathname: string, period: string): BreadcrumbIt
   if (!parts.length) return [{ label: '成本总览' }]
 
   const section = parts[0]
+  if (section === 'iam') return [overview, { label: '身份与权限' }]
+  if (section === 'audit') return [overview, { label: '审计日志' }]
+
   const sectionMap: Record<string, { label: string; detailLabel: string }> = {
     'cost-data': { label: '成本数据', detailLabel: '批次' },
     ai: { label: 'AI 分析', detailLabel: '会话' },
@@ -18,9 +21,17 @@ export function buildBreadcrumbs(pathname: string, period: string): BreadcrumbIt
   if (!matched) return [overview, { label: '当前页面' }]
   if (parts.length === 1) return [overview, { label: matched.label }]
 
+  const sectionCrumb: BreadcrumbItem = { label: matched.label, to: withPeriod(`/${section}`) }
+  if (section === 'data-admin' && parts[1] === 'imports') {
+    if (parts.length === 2) return [overview, sectionCrumb, { label: '导入任务' }]
+    const importsCrumb: BreadcrumbItem = { label: '导入任务', to: withPeriod('/data-admin/imports') }
+    if (parts[2] === 'new') return [overview, sectionCrumb, importsCrumb, { label: '提交导入任务' }]
+    return [overview, sectionCrumb, importsCrumb, { label: `任务 ${parts[2]}` }]
+  }
+
   return [
     overview,
-    { label: matched.label, to: withPeriod(`/${section}`) },
+    sectionCrumb,
     { label: `${matched.detailLabel} ${parts[1]}` },
   ]
 }

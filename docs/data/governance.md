@@ -154,6 +154,24 @@ SHA-256 派生，写入为同目录临时文件 + 原子替换，读回时重新
 以下仍不属于当前仓库能力：库存结存、返工分支、副产品、快照回滚、自动备份和生产恢复演练。
 数据治理前端页面与数据库 RLS 的交付状态以各自原子的文档为准，不在本节宣称。
 
+## 治理工作区页面
+
+前端治理页面按 `permissions` 呈现导航与路由可达性，强制满足 loading / empty / error /
+unavailable / unauthorized 五态，权限失败不得退化为空数据：
+
+| 路由 | 页面 | 必需权限 |
+| --- | --- | --- |
+| `/data-admin` | 批次、发布快照与质量只读视图 | `data_management.read` |
+| `/data-admin/imports` | 导入任务列表（状态筛选、分页） | `data_management.read` |
+| `/data-admin/imports/new` | 导入任务提交向导（来源 → 载荷预览 → 幂等提交） | `data_import.submit` |
+| `/data-admin/imports/:jobId` | 任务详情：校验错误分页、审批/拒绝、取消、发布状态 | `data_management.read` |
+| `/iam` | 主体角色与零件/期间范围编辑 | `iam.manage` |
+| `/audit` | 审计事件查询（操作者、动作、目标、结果、请求 ID） | `audit.read` |
+
+页面约束：任务详情按 `status` 与权限组合决定可用动作，未批准的 `approval_pending` 任务不出现
+发布入口；`publish_failed` 只展示既有快照保持不变的说明与 Worker 自动重试计数，不提供伪造的
+手动重试接口；页面不展示原始载荷、不提供回滚或删除、不在前端重算金额。
+
 ## 前端认证与权限呈现
 
 - 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、

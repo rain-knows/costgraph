@@ -4,8 +4,7 @@ export type RoutePermission = { path: string; permission: PermissionId }
 
 /**
  * 前端路由权限映射；后端仍是权威边界，这里的映射只决定导航可见性与页面可达性。
- * 现有服务端接口只强制 ``cost_data.read``（成本读取）与 ``data_management.read``
- * （数据治理），其余权限点留给 IAM 页与审计页。
+ * 匹配按最长前缀优先，因此 ``/data-admin/imports/new`` 会覆盖 ``/data-admin``。
  */
 export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   { path: '/', permission: 'cost_data.read' },
@@ -13,6 +12,10 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   { path: '/ai', permission: 'cost_data.read' },
   { path: '/reports', permission: 'cost_data.read' },
   { path: '/data-admin', permission: 'data_management.read' },
+  { path: '/data-admin/imports', permission: 'data_management.read' },
+  { path: '/data-admin/imports/new', permission: 'data_import.submit' },
+  { path: '/iam', permission: 'iam.manage' },
+  { path: '/audit', permission: 'audit.read' },
 ]
 
 export function requiredPermissionFor(pathname: string): PermissionId | undefined {

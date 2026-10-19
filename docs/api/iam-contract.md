@@ -159,6 +159,16 @@
 - 访问令牌只保存在内存，不写 `localStorage`/`sessionStorage`/cookie。
 - 采用 Authorization Code + PKCE 换取令牌。
 - 401 清理内存令牌并回到未登录态；403 显示无权限页；404 显示不存在，不得伪装成空数据。
+- 路由权限映射在 `frontend/src/auth/permissions.ts` 的 `ROUTE_PERMISSIONS`，按最长前缀匹配：
+  `/data-admin` 与 `/data-admin/imports` 需 `data_management.read`，
+  `/data-admin/imports/new` 需 `data_import.submit`，`/iam` 需 `iam.manage`，`/audit` 需 `audit.read`。
+  映射只决定导航可见性与页面可达性，服务端仍是权威边界。
+- 客户端封装：`frontend/src/api/iam.ts`（`listIamPrincipals`、`setPrincipalRoles`、
+  `setPrincipalScope`）与 `frontend/src/api/audit.ts`（`listAuditEvents`）。
+  `setPrincipalScope()` 发送平铺的 `allowed_part_ids`/`allowed_period_start`/`allowed_period_end`，
+  不包 `data_scope` 外壳；期间格式 `YYYY-MM`，前端在起止颠倒时先拦截且不发请求。
+- IAM 页面（`frontend/src/pages/IamPage.tsx`）未收窄的范围必须显示为“全部范围”，不得显示为空白；
+  审计页面（`frontend/src/pages/AuditPage.tsx`）只渲染 `detail` 的一层键值摘要，筛选条件写入 URL。
 
 ## 相关文档
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Database, FileBarChart2, LayoutDashboard, LogOut, Menu, Moon, Server, Sun, X } from 'lucide-react'
+import { Bot, Database, FileBarChart2, LayoutDashboard, LogOut, Menu, Moon, ScrollText, Server, Sun, Upload, Users, X } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { HealthStatus } from '../api/agent'
 import { getMe, type MeSummary, type PermissionId } from '../api/me'
@@ -17,6 +17,9 @@ const nav = [
   { to: '/ai', label: 'AI 分析', icon: Bot, permission: 'cost_data.read' as PermissionId },
   { to: '/reports', label: '报表中心', icon: FileBarChart2, permission: 'cost_data.read' as PermissionId },
   { to: '/data-admin', label: '数据治理', icon: Database, permission: 'data_management.read' as PermissionId },
+  { to: '/data-admin/imports', label: '导入任务', icon: Upload, permission: 'data_management.read' as PermissionId },
+  { to: '/iam', label: '身份与权限', icon: Users, permission: 'iam.manage' as PermissionId },
+  { to: '/audit', label: '审计日志', icon: ScrollText, permission: 'audit.read' as PermissionId },
 ]
 
 export type AppOutletContext = { period: string; me: MeSummary | null; meLoading: boolean; meError: boolean }

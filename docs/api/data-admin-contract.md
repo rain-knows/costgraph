@@ -156,3 +156,23 @@
   三者不得退化成"空数据"。
 - 配置项为 `VITE_OIDC_ISSUER`、`VITE_OIDC_CLIENT_ID`、`VITE_OIDC_REDIRECT_URI`、`VITE_OIDC_SCOPE`，
   见 `frontend/.env.example`。
+
+## 前端页面与路由
+
+导入任务接口由治理工作区的三个页面消费，页面按权限分治：
+
+| 路由 | 页面（`frontend/src/pages/`） | 所需权限 | 消费的接口 |
+| --- | --- | --- | --- |
+| `/data-admin/imports` | `ImportJobsPage.tsx` | `data_management.read` | `GET /api/data-admin/imports` |
+| `/data-admin/imports/new` | `GovernanceSubmitPage.tsx` | `data_import.submit` | `POST /api/data-admin/imports` |
+| `/data-admin/imports/:jobId` | `ImportJobDetailPage.tsx` | `data_management.read`（动作另需 `data_import.approve` / `data_import.submit`） | `GET /imports/{job_id}`、`GET /imports/{job_id}/errors`、`POST /decision`、`POST /cancel` |
+
+客户端封装在 `frontend/src/api/importJobs.ts`。`submitImportJob()` 必须携带
+`Idempotency-Key` 头，同一次提交尝试内重试要复用同一个键；服务端返回
+`duplicate: true` 时页面要明示“已存在相同快照的任务”并给出既有任务链接，而不是创建新任务。
+
+任务详情的可用动作严格由服务端返回的 `status` 与主体权限共同决定：只在
+`approval_pending` 且持有 `data_import.approve` 时出现审批与拒绝（拒绝必须填原因）；
+只在 `submitted`/`validating`/`approval_pending` 且持有 `data_import.submit` 时出现取消；
+`publish_failed` 没有客户端重试接口，页面只说明已发布快照保持不变与 Worker 自动重试计数。
+页面不展示 `payload`、不提供回滚与删除、不在前端重算金额。
