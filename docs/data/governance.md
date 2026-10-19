@@ -153,3 +153,13 @@ SHA-256 派生，写入为同目录临时文件 + 原子替换，读回时重新
 
 以下仍不属于当前仓库能力：库存结存、返工分支、副产品、快照回滚、自动备份和生产恢复演练。
 数据治理前端页面与数据库 RLS 的交付状态以各自原子的文档为准，不在本节宣称。
+
+## 前端认证与权限呈现
+
+- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- \GET /api/me\ 返回的 \permissions\ 决定导航可见性与路由可访问性；\/api/me\ 不返回 \	enant_id\。
+- 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
+  三者不得退化成\"空数据\"。
+- 配置项为 \VITE_OIDC_ISSUER\、\VITE_OIDC_CLIENT_ID\、\VITE_OIDC_REDIRECT_URI\、\VITE_OIDC_SCOPE\，
+  见 \rontend/.env.example\。

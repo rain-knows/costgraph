@@ -84,3 +84,13 @@ HTTP -> conversation context -> capability/data-scope gate
 控制面细节见 [Runtime](runtime.md)、[Harness](harness.md)、[Tool 与 Provider](tool-provider.md) 和 [Event、Trace、Replay 与 Eval](event-trace-replay.md)。
 
 代码锚点：`backend/scripts/generate_sample_cost_data.py`、`backend/app/services/cost_data_import_service.py`、`backend/app/services/import_job_service.py`、`backend/app/services/import_object_store.py`、`backend/app/services/cost_data_query_service.py`、`backend/app/domain/cost.py`、`backend/app/services/lineage_service.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/`、`backend/app/worker.py`。
+
+## 前端认证与权限呈现
+
+- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- \GET /api/me\ 返回的 \permissions\ 决定导航可见性与路由可访问性；\/api/me\ 不返回 \	enant_id\。
+- 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
+  三者不得退化成\"空数据\"。
+- 配置项为 \VITE_OIDC_ISSUER\、\VITE_OIDC_CLIENT_ID\、\VITE_OIDC_REDIRECT_URI\、\VITE_OIDC_SCOPE\，
+  见 \rontend/.env.example\。

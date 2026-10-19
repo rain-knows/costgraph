@@ -113,3 +113,13 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 数据治理查询与导入操作都在服务入口重新计算授权：查询固定请求 `data_management.read`，提交与取消固定请求 `data_import.submit`，审批固定请求 `data_import.approve`。从 checkpoint 恢复执行上下文时只接受与当前服务端主体一致的主体、角色、数据范围和 requested 集合，重新计算角色授权、server allowlist 和 DataScope；主体、租户、角色或数据范围不一致时 fail-closed，不能通过伪造 effective 字段扩大范围。`RuntimeRunRequest.principal` 是必填字段，运行边界不存在匿名主体。
 
 依据：`backend/app/agent/harness.py`、`backend/app/agent/context.py`、`backend/app/agent/capabilities.py`、`backend/app/domain/authorization.py`、`backend/app/services/data_admin_service.py`、`backend/app/services/import_job_service.py`、`backend/app/services/iam_service.py`。
+
+## 前端认证与权限呈现
+
+- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- \GET /api/me\ 返回的 \permissions\ 决定导航可见性与路由可访问性；\/api/me\ 不返回 \	enant_id\。
+- 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
+  三者不得退化成\"空数据\"。
+- 配置项为 \VITE_OIDC_ISSUER\、\VITE_OIDC_CLIENT_ID\、\VITE_OIDC_REDIRECT_URI\、\VITE_OIDC_SCOPE\，
+  见 \rontend/.env.example\。

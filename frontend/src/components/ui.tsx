@@ -70,17 +70,33 @@ export function PageHeader({ title, actions }: { title: string; actions?: ReactN
   )
 }
 
-export function RequestState({ loading, error, empty, onRetry, children, unavailable = false, unauthorized = false }: { loading: boolean; error: string; empty: boolean; onRetry?: () => void; children: ReactNode; unavailable?: boolean; unauthorized?: boolean }) {
-  if (!loading && !error && !empty && !unavailable && !unauthorized) return <>{children}</>
-  const state = unauthorized ? 'unauthorized' : unavailable ? 'unavailable' : error ? 'error' : loading ? 'loading' : 'empty'
-  const Icon = error || unavailable || unauthorized ? AlertCircle : loading ? LoaderCircle : Database
-  const title = unauthorized ? '无权访问数据治理' : unavailable ? '数据治理服务暂不可用' : error ? '数据读取失败' : loading ? '正在读取服务端数据' : '当前条件下没有数据'
-  const detail = unauthorized ? '当前主体没有 data_management.read 权限。' : unavailable ? '数据库当前不可用，请稍后重试。' : error || (loading ? '正在读取服务端只读数据。' : '当前没有符合条件的治理记录。')
-  return <section className="grid min-h-[420px] place-items-center px-6" data-state={state} role={error ? 'alert' : 'status'}>
+export type RequestStateKind = 'loading' | 'empty' | 'error' | 'unavailable' | 'unauthorized'
+
+const STATE_PRESENTATION: Record<RequestStateKind, { title: string; detail: string }> = {
+  loading: { title: '正在读取服务端数据', detail: '正在向服务端请求当前视图。' },
+  empty: { title: '当前条件下没有数据', detail: '当前没有符合条件的记录。' },
+  error: { title: '数据读取失败', detail: '服务端返回了错误，请重新读取。' },
+  unavailable: { title: '服务暂不可用', detail: '依赖的服务当前不可用，请稍后重试。' },
+  unauthorized: { title: '无权访问该页面', detail: '当前主体没有访问该页面所需的权限。' },
+}
+
+/** 五态统一呈现：loading / empty / error / unavailable / unauthorized。 */
+export function StatePanel({ state, title, detail, onRetry, compact = false }: { state: RequestStateKind; title?: string; detail?: string; onRetry?: () => void; compact?: boolean }) {
+  const presentation = STATE_PRESENTATION[state]
+  const Icon = state === 'loading' ? LoaderCircle : state === 'empty' ? Database : AlertCircle
+  const role = state === 'error' || state === 'unavailable' || state === 'unauthorized' ? 'alert' : 'status'
+  return <section className={cn('grid place-items-center px-6', compact ? 'min-h-64' : 'min-h-[420px]')} data-state={state} role={role}>
     <div className="max-w-md text-center">
-      <Icon className={cn('mx-auto mb-4 h-8 w-8 text-[var(--fg-2)]', loading && 'animate-spin')} aria-hidden="true" />
-      <h2 className="text-xl font-normal">{title}</h2><p className="mt-2 text-sm text-[var(--fg-2)]">{detail}</p>
-      {error && onRetry ? <Button className="mt-5" onClick={onRetry}>重新读取</Button> : null}
+      <Icon className={cn('mx-auto mb-4 h-8 w-8 text-[var(--fg-2)]', state === 'loading' && 'animate-spin')} aria-hidden="true" />
+      <h2 className="text-xl font-normal">{title ?? presentation.title}</h2>
+      <p className="mt-2 text-sm text-[var(--fg-2)]">{detail ?? presentation.detail}</p>
+      {onRetry && state !== 'loading' ? <Button className="mt-5" onClick={onRetry}>重新读取</Button> : null}
     </div>
   </section>
+}
+
+export function RequestState({ loading, error, empty, onRetry, children, unavailable = false, unauthorized = false, title, detail }: { loading: boolean; error: string; empty: boolean; onRetry?: () => void; children: ReactNode; unavailable?: boolean; unauthorized?: boolean; title?: string; detail?: string }) {
+  if (!loading && !error && !empty && !unavailable && !unauthorized) return <>{children}</>
+  const state: RequestStateKind = unauthorized ? 'unauthorized' : unavailable ? 'unavailable' : error ? 'error' : loading ? 'loading' : 'empty'
+  return <StatePanel state={state} title={title} detail={detail ?? (error || undefined)} onRetry={onRetry} />
 }

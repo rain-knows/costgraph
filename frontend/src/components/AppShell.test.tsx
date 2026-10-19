@@ -1,8 +1,63 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MeSummary } from '../api/me'
+import { AppShell } from './AppShell'
 import { Breadcrumbs } from './Breadcrumbs'
 import { buildBreadcrumbs } from './breadcrumbItems'
+
+const viewer: MeSummary = {
+  principal_id: 'user-1',
+  roles: ['viewer'],
+  capabilities: [],
+  permissions: ['cost_data.read'],
+  data_scope: { source: 'postgresql_cost_data', allowed_part_ids: [], allowed_period_start: null, allowed_period_end: null },
+}
+
+function mockBackend(me: MeSummary) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/api/me')) return new Response(JSON.stringify(me), { headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/health')) return new Response(JSON.stringify({ runtime_ready: true }), { headers: { 'Content-Type': 'application/json' } })
+    return new Response('null', { headers: { 'Content-Type': 'application/json' } })
+  })
+}
+
+function renderShell(pathname: string) {
+  return render(
+    <MemoryRouter initialEntries={[pathname]}>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/" element={<p>总览内容</p>} />
+          <Route path="/data-admin" element={<p>治理内容</p>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+afterEach(() => { vi.restoreAllMocks() })
+
+describe('AppShell permissions', () => {
+  it('hides navigation entries the principal cannot access', async () => {
+    mockBackend(viewer)
+    renderShell('/')
+
+    expect(await screen.findByText('总览内容')).toBeInTheDocument()
+    const primaryNav = screen.getByRole('navigation', { name: '一级导航' })
+    expect(primaryNav).toHaveTextContent('成本数据')
+    expect(primaryNav).not.toHaveTextContent('数据治理')
+    expect(await screen.findByText('user-1')).toBeInTheDocument()
+  })
+
+  it('renders the unauthorized panel instead of page content for a forbidden route', async () => {
+    mockBackend(viewer)
+    renderShell('/data-admin')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('无权访问该页面')
+    expect(screen.queryByText('治理内容')).not.toBeInTheDocument()
+  })
+})
 
 describe('buildBreadcrumbs', () => {
   it('marks the overview as the current page at the root', () => {

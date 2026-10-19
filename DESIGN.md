@@ -74,6 +74,21 @@ floating section card.
   holding `data_management.read`, stays read-only for batch, quality, and
   snapshot data, uses dense horizontally scrollable tables, and never renders
   rollback, delete, edit, or raw-payload controls.
+- Authentication is part of the interaction truth. The workspace obtains an
+  access token only through OIDC Authorization Code + PKCE, keeps it in memory
+  for the lifetime of the tab, and never persists it to `localStorage`,
+  `sessionStorage`, cookies, or the URL. A reload therefore returns to the
+  signed-out state by design.
+- `401`, `403`, and `404` are three distinct surfaces, never a shared empty
+  state: `401` clears the in-memory token and returns to sign-in, `403` renders
+  the unauthorized panel while keeping the session, and `404` renders the
+  not-found panel. Hiding an entry the principal cannot use is navigation
+  hygiene, not authorization; the server remains the authority.
+- Navigation entries are derived from the server-returned `permissions` of
+  `GET /api/me`. Direct navigation to a route the principal cannot access
+  renders the unauthorized panel instead of an empty table. While permissions
+  are loading the surface shows loading, and when they cannot be read it shows
+  unavailable; neither may be shown as "no data".
 - Agent progress is driven by the canonical Runtime lifecycle and ordered SSE
   events. Animation may clarify active progress but must stop for terminal
   states and respect `prefers-reduced-motion`.

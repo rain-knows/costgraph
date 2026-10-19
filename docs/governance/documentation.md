@@ -29,7 +29,8 @@
 | 能力、策略、主体与数据范围 | `architecture/harness.md` |
 | 数据治理 API、导入任务、权限和治理页面 | `api/data-admin-contract.md`、`architecture/system.md`、`architecture/data-flow.md`、`data/governance.md` |
 | 角色、权限分类法与授权门 | `architecture/harness.md` |
-| IAM/审计接口（批次 2 计划，尚未实现） | `api/iam-contract.md` |
+| IAM、角色/数据范围接口与审计查询 | `api/iam-contract.md`、`architecture/harness.md`、`data/data-dictionary.md` |
+| 前端登录、令牌生命周期与权限导航 | 根 `DESIGN.md`、`architecture/harness.md`、`api/iam-contract.md` |
 | 导入任务/Worker 调度、租约、重试 | `architecture/runtime.md`、`data/governance.md`、`api/data-admin-contract.md` |
 | Tool/Provider 注册、Schema、重试 | `architecture/tool-provider.md` |
 | Event、Trace、Replay、Eval、脱敏 | `architecture/event-trace-replay.md` |

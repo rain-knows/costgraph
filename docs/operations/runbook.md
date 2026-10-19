@@ -251,3 +251,13 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 5. 检查服务端 tenant、principal 和 data scope；最终批次及其整条上游追溯链必须同时可见。
 6. 检查 Run 状态、attempt、可用时间、租约 owner/过期时间和最后事件 ID；有效租约期间不要手工重复执行。
 7. 最后再做显式 DeepSeek 连通性检查。
+
+## 前端认证与权限呈现
+
+- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- \GET /api/me\ 返回的 \permissions\ 决定导航可见性与路由可访问性；\/api/me\ 不返回 \	enant_id\。
+- 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
+  三者不得退化成\"空数据\"。
+- 配置项为 \VITE_OIDC_ISSUER\、\VITE_OIDC_CLIENT_ID\、\VITE_OIDC_REDIRECT_URI\、\VITE_OIDC_SCOPE\，
+  见 \rontend/.env.example\。

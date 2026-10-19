@@ -21,7 +21,7 @@ const batch = {
   created_at: '2026-06-01T00:00:00Z',
 }
 const context: AppOutletContext = {
-  period: '2026-06', me: { principal_id: 'admin', roles: ['admin'], capabilities: ['system_help'], permissions: ['data_management.read'] }, meLoading: false, meError: false,
+  period: '2026-06', me: { principal_id: 'admin', roles: ['tenant_admin'], capabilities: ['system_help'], permissions: ['data_management.read'], data_scope: { source: 'postgresql_cost_data', allowed_part_ids: [], allowed_period_start: null, allowed_period_end: null } }, meLoading: false, meError: false,
 }
 
 function renderPage(path = '/data-admin', outletContext = context) {

@@ -100,3 +100,10 @@ GET /api/readyz
 `livez` 只证明进程可响应；`readyz` 检查数据库、迁移和 Worker，不调用付费模型；`health` 汇总版本、执行模式、`alembic` 和 `runtime_ready`。迁移检查同时校验当前模型必需的表和列：revision 相同但缺表或缺列时，`health.alembic` 与 `readyz.checks.alembic` 为 `schema_mismatch`，`runtime_ready=false`，`readyz` 返回 503。该检查不校验类型、索引或约束。前端在 `runtime_ready=false` 时禁止创建 Run。
 
 依据：`backend/app/api/conversations.py`、`backend/app/api/runtime_runs.py`、`backend/app/api/artifacts.py`、`backend/app/schemas/runtime.py`、`backend/app/schemas/agent.py`、`backend/app/schemas/artifact.py`。
+
+## 前端认证与 SSE
+
+- 浏览器端所有接口（含 SSE 事件流）通过 \Authorization: Bearer\ 携带访问令牌；
+  令牌只存在内存，不落 localStorage/sessionStorage/cookie。
+- SSE 的 \etch\ 分支必须显式附加令牌头，不能依赖浏览器的 cookie 会话。
+- 401 统一清空令牌并回到登录页；403 保留会话并渲染无权限；404 渲染不存在。

@@ -1,5 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { AuthCallbackPage } from './auth/AuthCallbackPage'
+import { RequireSignIn } from './auth/RequireSignIn'
 import { AppShell } from './components/AppShell'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
@@ -15,7 +17,8 @@ function PageLoading() {
 
 export default function App() {
   return <Suspense fallback={<PageLoading />}><Routes>
-    <Route element={<AppShell />}>
+    <Route path="/auth/callback" element={<AuthCallbackPage />} />
+    <Route element={<RequireSignIn><AppShell /></RequireSignIn>}>
       <Route path="/" element={<DashboardPage />} />
       <Route path="/cost-data" element={<CostDataPage />} />
       <Route path="/cost-data/:finishedBatchId" element={<RecordDetailPage />} />

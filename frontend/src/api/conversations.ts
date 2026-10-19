@@ -1,5 +1,5 @@
 import type { AgentRunResponse, AgentStreamMessage, CapabilityId, RoutingMode, RuntimeSemanticEvent } from './agent'
-import { apiError, apiRequest } from './http'
+import { apiError, apiRequest, authorizationHeader } from './http'
 
 export type ConversationRunSummary = {
   run_id: string
@@ -134,7 +134,7 @@ export async function streamConversationRun(
   let lastEventId = 0
 
   while (true) {
-    const headers: Record<string, string> = { Accept: 'text/event-stream' }
+    const headers: Record<string, string> = { ...authorizationHeader(), Accept: 'text/event-stream' }
     if (lastEventId) headers['Last-Event-ID'] = String(lastEventId)
     try {
       const response = await fetch(`${runtimePrefix}/${encodeURIComponent(conversationId)}/runs/${encodeURIComponent(runId)}/events?after_event_id=${lastEventId}`, { headers, signal })
