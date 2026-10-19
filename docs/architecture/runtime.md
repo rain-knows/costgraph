@@ -49,8 +49,16 @@ agent run（既有路径，未被导入任务重构），一条处理数据导�
 
 两条领取路径（Run 与导入任务）都在领取后先以任务/运行行上的 `tenant_id` 调用
 `backend/app/db/tenant.py` 的 `set_tenant()` 写入 `app.tenant_id`，再执行任何业务查询；
-完成或异常退出时通过 `release_session()` 回滚、清空该设置并关闭连接。Worker 不重新解析客户端
+完成或异常退出时通过 `release_session()` 摘除身份映射、回滚、清空该设置并关闭连接。Worker 不重新解析客户端
 身份，也不从环境变量推导租户：租户和主体全部来自已固化的 Run / Import Job 行。
+
+Worker 以 `costgraph_worker` 角色连接（`backend/alembic/versions/20260921_0005_fix_rls_parent_inheritance.py`
+创建），该角色被允许跨租户读取 `cost_data.data_import_jobs` 与 `agent_runtime.agent_runs`
+两张调度表；其余表的策略仍然生效。因此“跨租户领取”不能变成跨租户查询。
+
+`release_session()` 必须先 `expunge_all()` 再 `rollback()`：`rollback()` 会把身份映射
+实例标记为 expired，而仓储习惯在会话关闭后把 ORM 行映射成 dict，后置属性访问会抛
+`DetachedInstanceError`。契约由 `backend/tests/test_tenant_context.py` 固定。
 
 ContextVar 不能用于这条链路：FastAPI 同步依赖运行在线程池的上下文拷贝中，依赖里写入的值
 无法回传到 endpoint 与 Repository，只剩仓储里无人读取的副本。

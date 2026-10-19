@@ -222,18 +222,31 @@ Pydantic 契约校验的批次摘要与追溯图，`rule_version` 必须等于�
 为 NULL，查询返回空集，失败方向是收敛而不是放开。`agent_checkpoint.*` 由 LangGraph 维护，
 没有租户概念，只经已鉴权的 run 记录访问，不在策略范围内。
 
-应用连接使用受限角色 `costgraph_app`；表所有者不受策略约束，因此迁移和受控运维连接仍可维护
-全库。租户上下文由 `backend/app/db/tenant.py` 的 `set_tenant()` 写入，`release_session()`
-在回滚后清空该设置再关闭连接，防止连接池复用把租户上下文带到下一个请求。租户用会话级
-`set_config(..., false)` 写入，`rollback()` 不会清除它，因此 RESET 失败时必须 `invalidate()`
-作废物理连接；把仍带旧租户的连接还回池会让下一个请求串租户。
+应用连接使用受限角色 `costgraph_app`；Worker 使用 `costgraph_worker`（可跨租户读取
+`cost_data.data_import_jobs` 与 `agent_runtime.agent_runs` 两张调度表）。两个角色均以
+`NOLOGIN` 创建，由部署时授予登录与凭据。表所有者不受策略约束，因此迁移和受控运维连接仍可
+维护全库。租户上下文由 `backend/app/db/tenant.py` 的 `set_tenant()` 写入，
+`release_session()` 先 `expunge_all()` 再回滚、清空该设置，最后关闭连接，防止连接池复用把
+租户上下文带到下一个请求。租户用会话级 `set_config(..., false)` 写入，`rollback()` 不会清除它，
+因此 RESET 失败时必须 `invalidate()` 作废物理连接；把仍带旧租户的连接还回池会让下一个请求串租户。
+
+父表推导策略必须用子表名限定外层列（`20260921_0005`）：
+
+```sql
+EXISTS (SELECT 1 FROM agent_runtime.agent_runs AS parent_row
+        WHERE parent_row.run_id = audit_traces.run_id
+          AND parent_row.tenant_id = current_setting('app.tenant_id', true))
+```
+
+若写成裸列 `run_id`，它会被解析为内层 `parent_row` 的同名列，条件退化为恒真，只剩租户
+条件生效，结果是能读到全部租户的行。`20260921_0005` 修正了这类作用域串扰。
 
 策略是 `ENABLE` 而非 `FORCE`，所以 **API 必须以 `costgraph_app` 连接才受约束**；以表所有者
 连接时 19 张表的策略一条都不生效，只剩 Repository 一层。Worker 按设计使用所有者连接跨租户
 领取调度行，只靠 Repository `WHERE` 与领取后注入的 `tenant_id` 隔离。
 
-验证状态：这 4 张表的推导策略与直接比较策略的 4 个用例（`backend/tests/test_rls_postgres.py`）
-需要 `TEST_COST_DATABASE_URL`，未配置时全部跳过；当前尚无真实数据库上的拦截证据。
+验证状态：以 `costgraph_app` 连接真实 `costgraph_test` 后，`test_rls_postgres.py` 的 6 个用例
+（本租户过滤、未设租户返回 0 行、跨租户写入被拒、父表推导不串扰）全部通过。
 
 ## 关系
 

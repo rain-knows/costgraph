@@ -10,8 +10,8 @@ from app.repositories.data_admin_repository import get_data_admin_repository
 
 BACKEND = Path(__file__).resolve().parents[1]
 BASELINE_FILE = "20260907_0001_costgraph_baseline.py"
-#: 最新迁移 head（二期批次 1 增量迁移）；允许在 baseline 之上叠加。
-EXPECTED_HEAD = "20260920_0004"
+#: 最新迁移 head（二期批次 2B 修正迁移）；允许在 baseline 之上叠加。
+EXPECTED_HEAD = "20260921_0005"
 
 
 def _migration_heads() -> list[str]:

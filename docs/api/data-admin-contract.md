@@ -16,6 +16,9 @@
 - 批次、任务与错误明细以 `tenant_id` 查询，跨租户和不存在统一返回 `404`：
   `data_admin_batch_not_found`（批次）、`import_job_not_found`（任务）。
   质量与发布统计使用同一租户的 published batch，并应用 ExecutionContext 的零件/期间 DataScope。
+- 认证使用 OIDC Bearer 令牌（见 [IAM 契约](iam-contract.md)），API 以受限角色
+  `costgraph_app` 连接 PostgreSQL，因此仓储的 `WHERE tenant_id` 与数据库 RLS 同时生效；
+  跨租户读取在数据库层也会被策略拦成 0 行。
 
 ## 只读端点
 

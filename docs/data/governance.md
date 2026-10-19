@@ -140,7 +140,8 @@ SHA-256 派生，写入为同目录临时文件 + 原子替换，读回时重新
 - 权限固定为 7 项，角色固定为 4 个；提交需 `data_import.submit`，审批需 `data_import.approve`，
   查询需 `data_management.read`，审计查询需 `audit.read`。
 - 数据范围来自 `cost_data.iam_data_scopes`，随主体固化到 Run 与导入任务；
-  Worker 只用固化快照，不重新解析客户端身份。
+  Worker 只用固化快照，不重新解析客户端身份。Worker 以 `costgraph_worker` 角色连接，
+可能跨租户领取调度行，因此领取后必须用被领取行的 `tenant_id` 注入会话。
 - 角色与范围的每次变更都追加 `iam.roles_updated` / `iam.scope_updated` 审计事件。
 - 跨租户资源一律按未找到（404）处理，已登录无权限返回 403，未登录或令牌无效返回 401。
 
@@ -152,7 +153,8 @@ SHA-256 派生，写入为同目录临时文件 + 原子替换，读回时重新
 `/api/iam/*` 与 `/api/audit/events` 接口。
 
 以下仍不属于当前仓库能力：库存结存、返工分支、副产品、快照回滚、自动备份和生产恢复演练。
-数据治理前端页面与数据库 RLS 的交付状态以各自原子的文档为准，不在本节宣称。
+数据库 RLS 的租户隔离事实见 [存储](storage.md) 与 [数据字典](data-dictionary.md)，
+本节不重复。
 
 ## 治理工作区页面
 

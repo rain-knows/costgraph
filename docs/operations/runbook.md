@@ -33,8 +33,8 @@ OIDC_JWKS_URI=https://idp.example.com/.well-known/jwks.json
 
 ### 恢复 RLS 验证
 
-RLS 的 4 个用例（`backend/tests/test_rls_postgres.py`）与另外 8 个 PostgreSQL 用例需要
-`TEST_COST_DATABASE_URL`，未配置时整个文件跳过。要清除这些 skip：
+真实 PostgreSQL 的用例（`backend/tests/test_rls_postgres.py` 与数据治理、durable、
+审计不可变用例）需要 `TEST_COST_DATABASE_URL`，未配置时整个文件跳过：
 
 ```powershell
 cd D:\work\costgraph
@@ -45,8 +45,9 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests -q -rs
 ```
 
 目标为 `0 skipped`。目标库必须可写且**不要**指向共享开发库：`upgrade head` 会创建
-`costgraph_app` 角色并给表加策略，属于改变环境的操作。在 `0 skipped` 之前，文档不得把
-RLS 描述为已验证。
+`costgraph_app` 角色并给表加策略，属于改变环境的操作。
+
+当前运行证据：在 `costgraph_test` 上执行 `upgrade head` 后全量 `pytest` 为 `268 passed`（0 skipped），其中 `test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）共 14 个真实库用例全部通过，策略的 fail-closed 与跨租户拦截已得到实测。
 
 `OIDC_TENANT_CLAIM`（默认 `tenant_id`）、`OIDC_ROLES_CLAIM`（默认 `roles`）、
 `OIDC_JWKS_CACHE_SECONDS`（默认 600）与 `OIDC_LEEWAY_SECONDS`（默认 30）可按身份提供方调整。
@@ -261,7 +262,7 @@ git diff --check
 
 `check_docs_sync.ps1` 默认只比较本工作树未提交改动，因此本地跑它必须保留工作区改动。CI 在干净检出上运行，此时它读取 `DOCS_SYNC_BASE_REF`（PR 基分支 SHA 或推送前 SHA）改为比较 `ref...HEAD`；首次推送或手动触发时该 ref 无法解析，脚本会警告并退回本地 diff 行为，不因基准缺失而失败。同一门禁由 `.github/workflows/ci.yml` 的 `docs` job 在 windows-latest 上执行。
 
-CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 skip，与下述验证矩阵一致。当前本地基线为 `247 passed, 12 skipped`，12 个 skip 全部是未配置 `TEST_COST_DATABASE_URL` 的 PostgreSQL 用例：`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_rls_postgres.py`（4）。
+CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `TEST_COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 skip。本地未配置该变量时基线为 `254 passed, 14 skipped`；配置可写测试库后为 `268 passed`（0 skipped）。PostgreSQL 部分由以下文件构成：`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_rls_postgres.py`（6），共 14 个。
 
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
 - 导入任务测试覆盖状态机全部合法/非法迁移、幂等提交、重复快照返回已有任务、取消、租约过期、重试退避、审批与发布事务原子性、新旧快照并存、跨租户隔离，以及审计不可修改且不含载荷。

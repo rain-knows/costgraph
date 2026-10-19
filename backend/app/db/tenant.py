@@ -61,8 +61,13 @@ def release_session(session: Session) -> None:
     租户用会话级 ``set_config(..., false)`` 写入，``rollback()`` 不会清除它，
     因此必须显式 RESET。RESET 失败时只记日志并把连接交回连接池，会让下一个
     请求复用一条仍带旧租户的物理连接，所以失败分支要作废连接而不只是告警。
+
+    先 ``expunge_all()`` 再回滚：``rollback()`` 会把身份映射里的实例全部标记为
+    expired，仓储习惯在 ``with`` 块外把 ORM 行映射成 dict，那些属性访问会触发
+    刷新并抛 ``DetachedInstanceError``。先摘除即可让调用方安全读取已加载字段。
     """
     try:
+        session.expunge_all()
         session.rollback()
         session.execute(text(_RESET_SQL))
     except Exception:  # 清理失败不应掩盖业务异常

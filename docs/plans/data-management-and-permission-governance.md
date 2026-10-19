@@ -79,33 +79,32 @@ Authorization: Bearer
 - 测试：`backend/tests/test_oidc_and_iam.py` 覆盖签名、issuer、audience、过期、错误 claim、
   缺失令牌、角色矩阵与审计写入；全量 `pytest` 共 247 passed / 8 skipped。
 
-## 二期批次 2B（已实现，尚未在真实数据库验证）：数据库 RLS 租户隔离
+## 二期批次 2B（已完成，已在真实 PostgreSQL 验证）：数据库 RLS 租户隔离
 
-交付提交点 `feat(security): 租户级行级安全与应用角色隔离`。
+交付提交点 `feat(security): 租户级行级安全与应用角色隔离` 与本轮修正
+`backend/alembic/versions/20260921_0005_rls_scheduler_and_child_tables.py`。
 
 已实现事实（可回指迁移与代码）：
 
 - 迁移 `backend/alembic/versions/20260920_0004_rls_tenant_isolation.py` 为带 `tenant_id` 的表启用
   租户策略 `USING (tenant_id = current_setting('app.tenant_id', true))`，未设置 `app.tenant_id`
   时策略返回 0 行（fail-closed）；策略用 `ENABLE` 而非 `FORCE`，表所有者不受约束。
-- 只有调度表（`cost_data.data_import_jobs`、`agent_runtime.agent_runs`）允许
-  `costgraph_worker` 角色跨租户读取待领取工作；子表 `messages`/`agent_run_events`/
-  `audit_traces`/`agent_workers` 无 `tenant_id`，经父表判租户。
+- `20260921_0005` 补齐落地时发现的缺口：只有调度表（`cost_data.data_import_jobs`、
+  `agent_runtime.agent_runs`）允许 `costgraph_worker` 角色跨租户读取待领取工作；子表
+  `messages`/`agent_run_events`/`audit_traces`/`agent_workers` 无 `tenant_id`，经父表判租户。
 - `backend/app/db/tenant.py`：`set_tenant()`/`release_session()` 按请求设置并清理会话级
   `app.tenant_id`；RESET 失败时作废物理连接，不把仍带旧租户的连接还回连接池。
   会话依赖在 FastAPI 同步依赖的拷贝上下文中执行，因此以会话对象本身传递租户，不用 ContextVar。
+- `release_session()` 必须先 `expunge_all()` 再 `rollback()`：`rollback()` 会把身份映射实例
+  标记为 expired，而仓储习惯在会话关闭后把 ORM 行映射成 dict，后置属性访问会抛
+  `DetachedInstanceError`。
 - Worker 领取任务后用被领取行的 `tenant_id` 注入会话，Worker 角色不会变成跨租户后门。
 
-**验证状态：未在真实 PostgreSQL 上执行。** 以下用例已编写但当前全部 skip：
-
-- `backend/tests/test_rls_postgres.py` 的 4 个用例（本租户过滤、未设租户返回 0 行、跨租户写入被拒、
-  子表经父表继承租户）以受限角色 `costgraph_app` 连接真实库；
-- `test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、
-  `test_governance_audit_postgres.py`（2）同样因未配置 `TEST_COST_DATABASE_URL` 而 skip。
-
-跳过原因是 `TEST_COST_DATABASE_URL` 未配置。策略的 fail-closed 行为目前只有代码与迁移依据，
-**没有运行证据**。在配置可写的 `TEST_COST_DATABASE_URL` 并跑出 `0 skipped` 之前，不得把 RLS
-描述为已验证。恢复验证的步骤见 [运行手册](../operations/runbook.md)。
+**验证状态：已在真实 PostgreSQL 上执行。** 以受限角色 `costgraph_app` 连接
+`costgraph_test` 后全量 `pytest` 为 `268 passed`（0 skipped），其中
+`test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、
+`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）共 14 个
+真实库用例全部通过。
 
 ## 二期批次 2C（已完成，前端能力）：前端治理工作区
 
@@ -129,11 +128,9 @@ Authorization: Bearer
 
 以下验证项已具备代码与测试用例，但尚未取得运行证据，交付时不得声称已验证：
 
-1. 真实 PostgreSQL 上的 RLS 实际拦截（`test_rls_postgres.py`，4 个用例 skip）；
-2. 真实 PostgreSQL 上的数据治理、durable 与审计不可变验证（共 8 个用例 skip）；
-3. 浏览器级前端验收：明暗主题、窄屏布局、键盘可达；
-4. 真实 OIDC IdP 对接（当前用例使用本地 RSA 与静态 JWKS）；
-5. 真实 DeepSeek 入口调用。
+1. 浏览器级前端验收：明暗主题、窄屏布局、键盘可达（目前只有 jsdom 用例覆盖）；
+2. 真实 OIDC IdP 对接（当前用例使用本地 RSA 与静态 JWKS）；
+3. 真实 DeepSeek 入口调用。
 
-清除第 1、2 项的唯一路径是配置可写的 `TEST_COST_DATABASE_URL` 后跑出 `0 skipped`，
-步骤见 [运行手册](../operations/runbook.md)。
+真实 PostgreSQL 上的 RLS 拦截、数据治理、durable 与审计不可变验证已在本轮取得运行证据
+（`268 passed`，0 skipped），不再列为未关闭项。

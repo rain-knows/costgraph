@@ -39,6 +39,10 @@ from app.services.health_service import readiness_snapshot
 from app.settings import get_settings
 from app.worker import AgentWorker
 
+#: durable 测试使用的固定租户。旧配置主体（``AGENT_TENANT_ID``）已随 OIDC 切换删除，
+#: 租户现在只来自受信令牌声明或固化主体快照，测试用常量自足。
+DURABLE_TENANT_ID = "durable-test-tenant"
+
 QUESTION = "查询产品A 2026年6月单位成本，并说明成本构成 AUDIT_CANARY_51a2"
 
 SAMPLE_DIR = Path(__file__).resolve().parents[2] / "data" / "samples"
@@ -107,7 +111,7 @@ def durable_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("app.worker.get_model_provider", lambda: FixtureModelProvider())
     reset_engine()
     settings = get_settings()
-    ensure_published_sample_snapshot(settings.agent_tenant_id)
+    ensure_published_sample_snapshot(DURABLE_TENANT_ID)
     yield settings
     reset_engine()
 
@@ -116,7 +120,7 @@ def test_postgres_worker_claim_checkpoint_recovery_and_atomic_finalize(
     durable_settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tenant_id = durable_settings.agent_tenant_id
+    tenant_id = DURABLE_TENANT_ID
     owner_id = f"durable-owner-{uuid4().hex}"
     owner = ExecutionPrincipal(
         principal_id=owner_id,
