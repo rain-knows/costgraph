@@ -48,12 +48,53 @@
 - **门禁放开为多迁移**：`scripts/check_docs_sync.ps1` 断言 baseline 存在且允许增量迁移；
   `backend/tests/test_baseline_and_boundaries.py` 断言最新 head 为 `20260917_0002`。
 
-## 二期后续批次（尚未实现）
+## 二期批次 2A（已完成，当前能力）：OIDC 身份与 IAM
 
-- **批次 2（OIDC/IAM/RLS）**：OIDC/JWKS 校验替换配置主体；`iam_principal_roles`、
-  `iam_data_scopes` 表；PostgreSQL RLS；`/api/iam/*` 与 `/api/audit/events` 接口。
-  目标契约骨架见 [IAM 契约](../api/iam-contract.md)，其中路径与请求形态**尚未实现**。
-- **批次 3（前端与审计页面）**：导入任务提交、审批、错误明细与审计查询的前端页面，
-  以及批次 2 接口的前端类型同步。
+交付提交点 `feat(iam): OIDC 身份认证与租户角色/数据范围治理`。
 
-计划内容只写入 `docs/plans/`，不得作为已实现依据引用。
+```text
+Authorization: Bearer
+  -> OIDC 签名 / iss / aud / exp / 必需 claim 校验（JWKS）
+  -> sub 作为 principal_id，租户与角色取自受信 claim
+  -> 与 iam_principal_roles 本地成员关系求交集
+  -> iam_data_scopes 读取数据范围，随主体固化
+```
+
+已交付事实（可回指代码与测试）：
+
+- `backend/app/auth/{oidc,context,errors}.py`：令牌校验与主体构造；算法白名单
+  `RS256/RS384/RS512/ES256/ES384`，必需 claim `exp,iat,iss,aud,sub`。
+- `ExecutionPrincipal` 增加 `data_scope` 字段；`build_execution_context()` 与
+  `execution_context_from_state()` 的 `principal` 改为必填，`data_scope` 缺省取主体自带范围。
+  `RuntimeRunRequest.principal` 同样改为必填，运行边界不存在匿名主体。
+- `get_server_principal()` 与 `AGENT_PRINCIPAL_ID`/`AGENT_TENANT_ID`/`AGENT_PRINCIPAL_ROLES`/
+  `AGENT_ALLOWED_*` 全部删除，没有配置回退路径。
+- 迁移 `20260918_0003_iam_and_audit_read.py`：新增 `cost_data.iam_principal_roles`、
+  `cost_data.iam_data_scopes`，并扩展 `governance_audit_events` 动作集合增加
+  `iam.roles_updated`/`iam.scope_updated`。
+- 新接口：`GET /api/iam/principals`、`PUT /api/iam/principals/{principal_id}/roles`、
+  `PUT /api/iam/principals/{principal_id}/scope`、`GET /api/audit/events`；
+  `/api/me` 增加 `data_scope`，仍不返回 `tenant_id`。
+- 401/403/404 语义分开，401 响应带 `WWW-Authenticate: Bearer` 挑战头。
+- 测试：`backend/tests/test_oidc_and_iam.py` 覆盖签名、issuer、audience、过期、错误 claim、
+  缺失令牌、角色矩阵与审计写入；全量 `pytest` 共 247 passed / 8 skipped。
+
+## 二期批次 2B（进行中）：数据库 RLS 租户隔离
+
+设计已冻结，实现与验证状态以交付说明为准：
+
+- 严格租户策略覆盖 13 张数据表（`USING (tenant_id = current_setting('app.tenant_id', true))`）；
+- 只有 `cost_data.data_import_jobs` 与 `agent_runtime.agent_runs` 两张调度表允许
+  `costgraph_worker` 角色跨租户读取待领取工作；
+- 子表 `messages`/`agent_run_events` 经父表判租户；`agent_workers` 与 checkpoint 四张表不加 RLS；
+- Worker 领取后必须用被领取行的 `tenant_id` 注入会话，避免“Worker 角色”变成跨租户后门；
+- 未设置 `app.tenant_id` 时策略返回 0 行（fail-closed）。
+
+## 二期批次 2C（进行中）：前端治理工作区
+
+- OIDC Authorization Code + PKCE，访问令牌只存内存；
+- 导入任务提交向导、任务详情、IAM 与审计页面；
+- 按 `permissions` 控制导航与直接访问，无权限不得伪装为空数据。
+
+计划内容只写入 `docs/plans/`，不得作为已实现依据引用。批次 2B/2C 的当前能力以
+[存储](../data/storage.md)、[运行手册](../operations/runbook.md) 与代码为准。

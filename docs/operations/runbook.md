@@ -11,37 +11,42 @@
 
 ```dotenv
 COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
-AGENT_PRINCIPAL_ROLES=viewer
+OIDC_ISSUER=https://idp.example.com
+OIDC_AUDIENCE=costgraph
+OIDC_JWKS_URI=https://idp.example.com/.well-known/jwks.json
 ```
+
+`OIDC_TENANT_CLAIM`（默认 `tenant_id`）、`OIDC_ROLES_CLAIM`（默认 `roles`）、
+`OIDC_JWKS_CACHE_SECONDS`（默认 600）与 `OIDC_LEEWAY_SECONDS`（默认 30）可按身份提供方调整。
 
 本地非敏感配置写入 `backend/.env`，环境变量优先。不要打印或提交连接密码和 API Key。
 
 导入载荷写入本地内容寻址对象存储。目录可用 `IMPORT_OBJECT_STORE_ROOT` 覆盖，缺省为系统临时目录下
 `costgraph-import-objects`。该目录必须对 API 与 Worker 进程可写，且属于受控运行数据，不得提交。
 
-### 角色配置
+### 身份提供方与角色
 
-`AGENT_PRINCIPAL_ROLES` 接受四个最终角色之一或多个（逗号分隔，不能重复、不能未知）。
-`user`/`admin` 旧值已删除，配置旧值会在主体构造时直接失败：
+身份只来自 OIDC，没有配置主体：
 
-```dotenv
-# 只读查看成本：
-AGENT_PRINCIPAL_ROLES=viewer
-# 提交导入任务：
-AGENT_PRINCIPAL_ROLES=data_operator
-# 审批导入任务：
-AGENT_PRINCIPAL_ROLES=data_approver
-# 全权限（含角色/数据范围管理与审计读取）：
-AGENT_PRINCIPAL_ROLES=tenant_admin
-```
+- `OIDC_ISSUER`、`OIDC_AUDIENCE`、`OIDC_JWKS_URI` 在 `staging`/`production` 未配置时启动即失败，
+  不存在"默认租户"或匿名主体回退。
+- 令牌 `sub` 作为 `principal_id`，租户来自 `OIDC_TENANT_CLAIM`，角色来自 `OIDC_ROLES_CLAIM`；
+  令牌角色必须与 `cost_data.iam_principal_roles` 的本地成员关系取交集后才生效。
+- 新主体先由 `tenant_admin` 调用 `PUT /api/iam/principals/{principal_id}/roles` 建立成员关系，
+  否则该主体一律 403 `principal_not_in_tenant`。
+- 数据范围默认不收窄；需要限制零件/期间时调用 `PUT /api/iam/principals/{principal_id}/scope`。
+- `AGENT_PRINCIPAL_ID`、`AGENT_TENANT_ID`、`AGENT_PRINCIPAL_ROLES`、`AGENT_ALLOWED_PART_IDS`、
+  `AGENT_ALLOWED_PERIOD_START`、`AGENT_ALLOWED_PERIOD_END` 已删除，配置旧变量不会恢复生效。
 
-角色 -> 权限映射见 [Harness](../architecture/harness.md)。修改后必须重启 API 与 Worker。
+角色 -> 权限映射见 [Harness](../architecture/harness.md)，接口细节见 [IAM 契约](../api/iam-contract.md)。
+修改角色或范围后无需重启：API 每次请求重新读取成员关系与数据范围。
 
 ## 空库迁移与导入
 
-迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20260917_0002`。
+迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20260918_0003`。
 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换；增量迁移
-`20260917_0002` 新增导入任务与治理审计表，并把 `batch_id` 入键改造为不可变快照。
+`20260917_0002` 新增导入任务与治理审计表，并把 `batch_id` 入键改造为不可变快照；
+`20260918_0003` 新增 IAM 主体角色/数据范围两张表，并扩展审计动作集合。
 已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，
 然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。
 `dev.ps1`、API 和 Worker 均不得静默清库或自动建表。

@@ -2,6 +2,12 @@
 
 > 状态：批次 1 执行契约。本文件是本轮唯一事实来源；实施必须严格按此文件，不得扩大范围。
 > 用户已确认的四项决策见第 1 节。批次 2（OIDC/IAM/RLS）与批次 3（前端/审计页面）不在本轮。
+>
+> **后续状态（供阅读时对齐）**：本文描述的“配置注入主体”已在批次 2A 被 OIDC 取代，
+> `get_server_principal()` 与 `AGENT_PRINCIPAL_*`/`AGENT_ALLOWED_*` 已删除，
+> `iam_principal_roles`/`iam_data_scopes` 与新接口已交付；当前事实以
+> [IAM 契约](../api/iam-contract.md) 与 [Harness](../architecture/harness.md) 为准。
+> 本文其余段落保留为批次 1 当时的事实记录，不再修改。
 
 ## 0. 范围
 

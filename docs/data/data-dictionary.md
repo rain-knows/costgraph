@@ -50,10 +50,31 @@
 `request_id` 可空；`detail` 为 `JSONB`，只允许计数、错误码、状态、`attempt_count`、`batch_id` 等
 非敏感字段，不得写入 `raw_payload`、文件内容、令牌或连接串。
 `ck_governance_audit_events_action` 与 `ck_governance_audit_events_outcome` 限定动作与结果取值；
+动作集合为 `submitted/validated/validation_failed/approved/rejected/publishing/published/publish_failed/cancelled`
+（导入任务生命周期）加 `iam.roles_updated`/`iam.scope_updated`（身份治理变更）。
 `trg_governance_audit_events_append_only`（`BEFORE UPDATE OR DELETE`）对任何修改或删除报 `restrict_violation`，
 使“只追加”由数据库约束而不是调用约定保证；
 `ix_governance_audit_events_tenant_created`、`ix_governance_audit_events_job` 支持租户时间线与任务查询。
-无 UPDATE/DELETE 代码路径。
+无 UPDATE/DELETE 代码路径。`GET /api/audit/events` 只读取上述非敏感字段。
+
+### `iam_principal_roles`
+
+租户内主体的角色绑定，主键 `(tenant_id, principal_id)`。`roles` 为 `text[]`，
+`ck_iam_principal_roles_non_empty` 要求非空，`ck_iam_principal_roles_known` 把取值限定为
+`viewer`、`data_operator`、`data_approver`、`tenant_admin`（`<@` 数组包含判定）。
+`updated_by`、`updated_at` 记录最后一次变更人与时间；`ix_iam_principal_roles_tenant` 服务租户内列表。
+该表是登录授权的本地事实来源：OIDC 令牌角色必须与这里的角色取交集才生效，
+新增主体没有该行时一律 403 `principal_not_in_tenant`。
+
+### `iam_data_scopes`
+
+主体级数据范围，主键 `(tenant_id, principal_id)`。`allowed_part_ids` 为 `text[]`（空数组表示不限制零件）；
+`allowed_period_start`、`allowed_period_end` 为 `varchar(7)` 的 `YYYY-MM`，可为空表示该侧不限制。
+`ck_iam_data_scopes_start_format`/`ck_iam_data_scopes_end_format` 校验月份格式，
+`ck_iam_data_scopes_period_order` 要求开始不晚于结束；`ix_iam_data_scopes_tenant` 服务租户内列表。
+该表不存派生值，也不作为事实来源参与金额计算；Run 与导入任务只使用创建时固化的范围快照。
+
+两张 IAM 表在迁移 `20260918_0003` 中创建。
 
 ### `parts`
 

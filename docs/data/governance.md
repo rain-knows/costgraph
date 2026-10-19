@@ -130,10 +130,26 @@ SHA-256 派生，写入为同目录临时文件 + 原子替换，读回时重新
 历史批次是各自独立的不可变快照，但仓库不提供快照切换或回滚能力，因此接口不得把
 `superseded` 描述为可回滚目标。
 
+## 身份与范围治理
+
+导入任务的提交、审批与数据读取都绑定 OIDC 认证后的主体：
+
+- 身份由 `Authorization: Bearer` 访问令牌校验确定（签名、`iss`、`aud`、`exp`），
+  `sub` 映射 `principal_id`，租户与角色取自受信 claim 并与 `cost_data.iam_principal_roles`
+  的本地成员关系取交集；令牌角色本身不构成授权。
+- 权限固定为 7 项，角色固定为 4 个；提交需 `data_import.submit`，审批需 `data_import.approve`，
+  查询需 `data_management.read`，审计查询需 `audit.read`。
+- 数据范围来自 `cost_data.iam_data_scopes`，随主体固化到 Run 与导入任务；
+  Worker 只用固化快照，不重新解析客户端身份。
+- 角色与范围的每次变更都追加 `iam.roles_updated` / `iam.scope_updated` 审计事件。
+- 跨租户资源一律按未找到（404）处理，已登录无权限返回 403，未登录或令牌无效返回 401。
+
+接口细节见 [IAM 契约](../api/iam-contract.md)，授权门见 [Harness](../architecture/harness.md)。
+
 ## 当前不提供
 
-完整身份认证（OIDC/JWKS）、数据库 RLS、主体级角色/数据范围表、`/api/iam/*` 与
-`/api/audit/events` 接口、前端导入/审批/审计页面、库存结存、返工分支、副产品、快照回滚、
-自动备份和生产恢复演练不属于当前仓库能力。当前 principal 由服务端可信配置注入
-（`AGENT_PRINCIPAL_ID`/`AGENT_TENANT_ID`/`AGENT_PRINCIPAL_ROLES`），不能描述为完整认证系统；
-身份替换是批次 2 计划，见 [IAM 契约](../api/iam-contract.md)。
+以下能力**已经提供**，不属于排除项：OIDC/JWKS 认证、主体级角色与数据范围表、
+`/api/iam/*` 与 `/api/audit/events` 接口。
+
+以下仍不属于当前仓库能力：库存结存、返工分支、副产品、快照回滚、自动备份和生产恢复演练。
+数据治理前端页面与数据库 RLS 的交付状态以各自原子的文档为准，不在本节宣称。

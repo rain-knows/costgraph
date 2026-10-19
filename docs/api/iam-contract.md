@@ -1,47 +1,168 @@
-# API/IAM 契约（批次 2 计划，尚未实现）
+# API/IAM 契约
 
-> 状态：**契约骨架，尚未实现**。本文只冻结批次 2 的目标接口形态，防止实现时出现第二套命名。
-> 当前代码没有注册任何 `/api/iam/*` 或 `/api/audit/events` 路由，也没有 `iam_principal_roles`
-> 与 `iam_data_scopes` 表。可核查依据：`backend/tests/test_baseline_and_boundaries.py` 的
-> canonical API 路径集合与 `set(Base.metadata.tables)` 断言、`backend/app/api/` 下不存在
-> IAM Router、`backend/app/db/models.py` 中不存在 IAM 表。
-> 权威规格见 [二期批次 1 规格](../plans/data-governance-phase2-batch1-spec.md) 第 0 节：“不做 OIDC/JWKS 校验、
-> `iam_principal_roles`/`iam_data_scopes` 表、PostgreSQL RLS、前端页面改动、`/api/iam/*` 与
-> `/api/audit/events` 接口。”
+身份、角色绑定、数据范围与审计查询的当前接口事实。权威代码：
+`backend/app/auth/`、`backend/app/api/iam.py`、`backend/app/api/audit.py`、
+`backend/app/services/iam_service.py`、`backend/app/repositories/postgres_iam_repository.py`、
+`backend/app/schemas/iam.py`。
 
-## 当前事实（批次 1）
+## 身份边界
 
-- 主体仍由服务端配置注入：`AGENT_PRINCIPAL_ID`、`AGENT_TENANT_ID`、`AGENT_PRINCIPAL_ROLES`，
-  经 `get_server_principal()` 构造 `ExecutionPrincipal`；
-  见 [Harness](../architecture/harness.md)。
-- 角色与权限分类法已经是最终形态（4 角色 / 7 权限），批次 2 只替换身份来源，不改变分类法。
-- 只有 `/api/me` 返回当前主体的非敏感授权摘要；没有主体、角色绑定或数据范围的写接口。
-- 治理审计事件只通过 `cost_data.governance_audit_events` 追加写入，没有查询 API。
+- 所有 `/api/*` 受保护接口要求 `Authorization: Bearer <access_token>`。
+- 令牌由 `backend/app/auth/oidc.py` 校验：签名（RS256/RS384/RS512/ES256/ES384，经 JWKS）、
+  `iss`、`aud`、`exp`/`iat`、以及必需 claim `exp, iat, iss, aud, sub`。
+- `sub` 映射 `principal_id`；租户与角色来自受信 claim（`OIDC_TENANT_CLAIM`、`OIDC_ROLES_CLAIM`），
+  再与本地 `cost_data.iam_principal_roles` 的成员关系求交集。令牌里的角色本身不构成授权。
+- 主体数据范围来自 `cost_data.iam_data_scopes`，随 `ExecutionPrincipal` 一起固化；
+  Run 与导入任务只使用固化的主体快照，Worker 不重新解析客户端身份。
+- 配置主体已删除：`AGENT_PRINCIPAL_ID`、`AGENT_TENANT_ID`、`AGENT_PRINCIPAL_ROLES`、
+  `AGENT_ALLOWED_PART_IDS`、`AGENT_ALLOWED_PERIOD_START`、`AGENT_ALLOWED_PERIOD_END`
+  与 `get_server_principal()` 均不存在，没有配置回退路径。
 
-## 批次 2 计划接口（未实现）
+### 状态码语义
 
-以下路径、请求与响应形态是批次 2 的设计目标，**当前调用一律 404**：
-
-| 方法 | 计划路径 | 用途 |
+| 场景 | 状态码 | `code` |
 | --- | --- | --- |
-| `GET` | `/api/iam/principals` | 列出当前租户主体及其角色绑定 |
-| `POST` | `/api/iam/principals/{principal_id}/roles` | 绑定/解绑角色（需要 `iam.manage`） |
-| `GET` | `/api/iam/data-scopes` | 列出主体级数据范围 |
-| `PUT` | `/api/iam/data-scopes/{principal_id}` | 设置主体级零件/期间范围（需要 `data_scope.manage`） |
-| `GET` | `/api/audit/events` | 分页查询治理审计事件（需要 `audit.read`） |
+| 缺少或非法 Bearer 头 | 401（带 `WWW-Authenticate: Bearer`） | `missing_bearer_token` |
+| 令牌签名 / issuer / audience / 过期 / claim 不合法 | 401 | `invalid_token` |
+| 已登录但不属于该租户 | 403 | `principal_not_in_tenant` |
+| 已登录但未被分配任何角色 | 403 | `principal_has_no_role` |
+| 已登录但缺少所需权限 | 403 | `permission_denied` |
+| 目标主体不属于当前租户 | 404 | `iam_principal_not_found` |
 
-计划约束（实现前必须由后续规格重新冻结，本文不构成已实现事实）：
+## 当前接口
 
-- OIDC/JWKS 校验替换配置主体；`get_server_principal()` 的配置路径随批次 2 一起删除，不留回退。
-- `iam_principal_roles` / `iam_data_scopes` 表与 PostgreSQL RLS 由新迁移引入，Alembic 仍是结构唯一入口。
-- 权限检查复用现有 `require_permission()` 与 7 个 `PermissionId`，不新增第二套角色名。
-- `/api/audit/events` 只返回 `governance_audit_events` 的非敏感字段（计数、错误码、状态、主体、时间），
-  永不返回原始载荷、令牌或连接串；审计仍只追加，不提供 UPDATE/DELETE。
-- 错误外壳沿用 `{"detail": {"code", "message", "request_id", "details"}}` 与 `X-Request-ID`。
+错误外壳与其他接口一致：`{"detail": {"code", "message", "request_id", "details"}}`，响应带 `X-Request-ID`。
+
+### `GET /api/me`
+
+返回当前主体的非敏感授权摘要，**不返回** `tenant_id`：
+
+```json
+{
+  "principal_id": "user-1",
+  "roles": ["data_approver"],
+  "capabilities": ["system_help", "cost_calculation", "report_generation"],
+  "permissions": ["cost_data.read", "data_management.read", "data_import.approve", "audit.read"],
+  "data_scope": {
+    "source": "postgresql_cost_data",
+    "allowed_part_ids": ["FG-001"],
+    "allowed_period_start": "2026-01",
+    "allowed_period_end": "2026-12"
+  }
+}
+```
+
+`permissions` 是该主体角色矩阵的授权并集；前端按它显示导航与拦截直接访问。
+
+### `GET /api/iam/principals`
+
+需要 `iam.manage`。分页参数 `page`（≥1，默认 1）、`page_size`（1..100，默认 20）。
+
+```json
+{
+  "items": [
+    {
+      "principal_id": "user-1",
+      "roles": ["data_operator"],
+      "data_scope": {"allowed_part_ids": [], "allowed_period_start": null, "allowed_period_end": null},
+      "updated_by": "admin-1",
+      "updated_at": "2026-09-18T10:00:00Z"
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+数据范围为空集表示该主体未被收窄；只允许管理员通过下述接口显式收窄。
+
+### `PUT /api/iam/principals/{principal_id}/roles`
+
+需要 `iam.manage`。请求体：
+
+```json
+{ "roles": ["data_operator", "data_approver"] }
+```
+
+- 角色取值固定为 `viewer`、`data_operator`、`data_approver`、`tenant_admin`，非空且去重后写库。
+- 该接口同时是该租户新增主体成员关系的入口（upsert `iam_principal_roles`）。
+- 成功后返回该主体的完整 [主体表示](#get-apiiamprincipals)。
+- 追加审计事件 `iam.roles_updated`。
+
+### `PUT /api/iam/principals/{principal_id}/scope`
+
+需要 `data_scope.manage`。请求体：
+
+```json
+{
+  "allowed_part_ids": ["FG-001", "FG-002"],
+  "allowed_period_start": "2026-01",
+  "allowed_period_end": "2026-12"
+}
+```
+
+- 期间格式固定 `YYYY-MM`；开始不得晚于结束；违反返回 422。
+- 主体必须是该租户已有成员，否则 404 `iam_principal_not_found`。
+- `allowed_part_ids` 去重后写库；两个期间字段可为 `null` 表示该侧不限制。
+- 追加审计事件 `iam.scope_updated`。
+
+### `GET /api/audit/events`
+
+需要 `audit.read`。参数：`page`、`page_size`、`actor_principal_id`（精确匹配）、`action`（精确匹配）。
+
+```json
+{
+  "items": [
+    {
+      "event_id": 42,
+      "job_id": "3f1c…",
+      "batch_id": null,
+      "actor_principal_id": "approver-1",
+      "action": "approved",
+      "target_type": "import_job",
+      "target_id": "3f1c…",
+      "outcome": "success",
+      "request_id": "7b2d…",
+      "detail": {"reason": "校验结果已复核"},
+      "created_at": "2026-09-18T10:05:00Z"
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+允许的 `action` 取值由 `ck_governance_audit_events_action` 约束：`submitted`、`validated`、
+`validation_failed`、`approved`、`rejected`、`publishing`、`published`、`publish_failed`、
+`cancelled`、`iam.roles_updated`、`iam.scope_updated`。
+
+审计事件只追加：`cost_data.governance_audit_events` 上的触发器拒绝 `UPDATE`/`DELETE`；
+接口永不返回访问令牌、数据库连接串或导入原始载荷。
+
+## 角色与权限矩阵
+
+| 角色 | 权限 |
+| --- | --- |
+| `viewer` | `cost_data.read` |
+| `data_operator` | `cost_data.read`、`data_management.read`、`data_import.submit` |
+| `data_approver` | `cost_data.read`、`data_management.read`、`data_import.approve`、`audit.read` |
+| `tenant_admin` | 全部 7 项，含 `iam.manage`、`data_scope.manage`、`audit.read` |
+
+四个角色都保留 `system_help`、`cost_calculation`、`report_generation` 三个 Agent 能力；
+权限与能力的映射由 `backend/app/domain/authorization.py` 的 `ROLE_PERMISSIONS` /
+`ROLE_CAPABILITIES` 唯一决定。
+
+## 前端约定
+
+- 访问令牌只保存在内存，不写 `localStorage`/`sessionStorage`/cookie。
+- 采用 Authorization Code + PKCE 换取令牌。
+- 401 清理内存令牌并回到未登录态；403 显示无权限页；404 显示不存在，不得伪装成空数据。
 
 ## 相关文档
 
-- 已实现的角色/权限分类法与授权门：[Harness](../architecture/harness.md)
-- 已实现的数据治理接口：[数据治理契约](data-admin-contract.md)
-- 当前已完成批次与后续批次划分：[数据管理面板与权限治理](../plans/data-management-and-permission-governance.md)、
-  [二期批次 1 权威规格](../plans/data-governance-phase2-batch1-spec.md)
+- 授权门与策略边界：[Harness](../architecture/harness.md)
+- 数据治理接口：[数据治理契约](data-admin-contract.md)
+- 表结构与存储：[数据字典](../data/data-dictionary.md)、[存储](../data/storage.md)
+- 运行配置与排障：[运行手册](../operations/runbook.md)

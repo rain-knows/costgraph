@@ -29,7 +29,8 @@ JSON 是导入输入，不是应用请求的 Repository。HTTP 只创建任务�
 ## 成本只读查询
 
 ```text
-HTTP query -> server principal/tenant/data scope
+HTTP query -> Bearer 令牌校验（OIDC/JWKS）
+  -> 租户内成员关系求交集 + 主体数据范围
   -> published finished batch cost projections
   -> SQL filtering/sorting/pagination or overview aggregation
   -> CostOverview | FinishedBatchCostList | FinishedBatchCostDetail

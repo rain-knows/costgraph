@@ -6,7 +6,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 
 | schema | owner | 表 |
 | --- | --- | --- |
-| `cost_data` | 成本数据服务 | `data_load_batches`、`data_load_errors`、`data_import_jobs`、`governance_audit_events`、`parts`、`cost_events`、`cost_event_inputs`、`cost_records`、`finished_batch_cost_projections` |
+| `cost_data` | 成本数据服务 | `data_load_batches`、`data_load_errors`、`data_import_jobs`、`governance_audit_events`、`iam_principal_roles`、`iam_data_scopes`、`parts`、`cost_events`、`cost_event_inputs`、`cost_records`、`finished_batch_cost_projections` |
 | `agent_runtime` | 会话与运行服务 | `conversations`、`turns`、`messages`、`audit_traces`、`agent_runs`、`agent_run_events`、`agent_workers` |
 | `agent_checkpoint` | LangGraph 恢复状态 | `checkpoint_migrations`、`checkpoints`、`checkpoint_blobs`、`checkpoint_writes` |
 | `agent_output` | 结构化产出服务 | `artifacts` |
@@ -19,8 +19,9 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - URL 使用 SQLAlchemy psycopg 方言，例如 `postgresql+psycopg://user:password@host:5432/costgraph`。密码不得进入源码、文档、日志或 Trace。
 - 连接池启用 pre-ping；pool size、overflow 和超时使用服务端配置的有界值。
 - Alembic 是 schema 的唯一创建入口：`20260907_0001` 是迁移图根节点 baseline，`20260917_0002`
-  在其上叠加导入任务表与不可变快照键改造；`backend/alembic/versions/` 允许继续追加增量迁移，
-  但必须能从 baseline 线性到达且只有一个 head。API 和 Worker 启动时不自动创建业务表，也不调用
+  在其上叠加导入任务表与不可变快照键改造；`20260918_0003` 新增 `iam_principal_roles`、
+  `iam_data_scopes` 并扩展 `governance_audit_events` 的动作约束；`backend/alembic/versions/`
+  允许继续追加增量迁移，但必须能从 baseline 线性到达且只有一个 head。API 和 Worker 启动时不自动创建业务表，也不调用
   checkpoint saver 的 setup。
 - 迁移只使用显式 `op.` DDL，禁止 `Base.metadata.create_all`、`autogenerate` 和导入运行时模型。
   `20260917_0002` 先把五张成本事实表的 `batch_id` 纳入主键与唯一约束、删除租户级全局唯一约束，
@@ -32,6 +33,8 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 ## 读取与所有权边界
 
 - 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产成品零件和期间，并应用服务端 `ExecutionContext.data_scope`。投影表带有 `batch_id` 列但不引用成本事件，因此任何 join 必须显式带 `batch_id` 谓词，不能匿名按 `event_id` 关联。
+- 权限与数据范围只来自 `cost_data.iam_principal_roles`（租户内角色）与 `cost_data.iam_data_scopes`（零件/期间范围）；两张表以 `(tenant_id, principal_id)` 为主键，角色取值由 `ck_iam_principal_roles_known` 约束锁定为四个角色。数据范围为空集表示未被收窄。
+- 租户隔离有两层：Repository 的 `WHERE tenant_id = ...` 是第一层；数据库 RLS 是第二层。RLS 策略以 `current_setting('app.tenant_id', true)` 为唯一判据，未设置时返回 0 行（fail-closed），不存在“缺省租户”的越权路径。RLS 必须能独立拦住漏写 `tenant_id` 的查询，不能与仓储层互相替代。
 - 导入任务 Repository 复用同一 PostgreSQL 工厂：任务与审计按租户隔离，审计只追加。审计表由 `trg_governance_audit_events_append_only` 触发器拦下任何 UPDATE/DELETE，测试清理需显式禁用触发器。导入载荷存在本地内容寻址对象存储（默认 `IMPORT_OBJECT_STORE_ROOT`，缺省为系统临时目录下 `costgraph-import-objects`），数据库只存 `source_object_key`/`source_object_size`/`source_object_sha256`；`object_key` 由内容 SHA-256 派生，读回时重新校验摘要。
 - 数据治理只读 Repository 复用同一 PostgreSQL 工厂；批次和错误按租户隔离，发布质量统计绑定当前 published batch、当前规则版本和 DataScope。
 - 会话、Turn、消息、Run、Trace 和 Artifact 的业务查询必须匹配 `tenant_id + principal_id`。

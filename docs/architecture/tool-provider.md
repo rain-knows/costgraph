@@ -27,3 +27,12 @@ Runtime 记录 provider、model、adapter version、usage、duration、timeout�
 模型可以提出路由和槽位并生成解释，但最终路由、能力、权限、范围、批次图、48 项费用归类、金额和报表字段仍由服务端决定。模型不得创建投入边、修改领用比例或生成权威成本值。
 
 依据：`backend/app/agent/runtime_contracts.py`、`backend/app/agent/harness.py`、`backend/app/agent/providers.py`、`backend/app/agent/tools.py`、`backend/app/agent/runtime_services.py`。
+
+## 身份校验依赖
+
+OIDC 访问令牌的签名与 JWKS 校验使用 `PyJWT[crypto]`（`backend/requirements.txt` 锁定
+`PyJWT[crypto]==2.15.1`），不自行实现 JWT 解析或密钥缓存。允许的签名算法白名单为
+`RS256/RS384/RS512/ES256/ES384`，不对令牌使用 `none`、HS* 或未声明算法。JWKS 由
+`PyJWKClient` 按 `OIDC_JWKS_CACHE_SECONDS` 缓存，拉取失败与签名不合法分开报错。
+
+依据：`backend/app/auth/oidc.py`。
