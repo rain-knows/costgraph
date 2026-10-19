@@ -324,6 +324,40 @@ def _drop_legacy_foreign_keys() -> None:
         op.drop_constraint(name, table, type_="foreignkey", schema=COST_SCHEMA)
 
 
+def _create_audit_immutability_guard() -> None:
+    """审计事件只允许追加。
+
+    Repository 只暴露 ``append_audit_event``，但后续代码仍可能直接写 SQL；
+    在数据库层拦下 UPDATE/DELETE，让“审计不可修改”由约束而不是约定保证。
+    """
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION {COST_SCHEMA}.reject_audit_event_mutation()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            RAISE EXCEPTION 'governance_audit_events 只允许追加，禁止 %', TG_OP
+                USING ERRCODE = 'restrict_violation';
+        END;
+        $$
+        """
+    )
+    op.execute(
+        f"""
+        CREATE TRIGGER trg_governance_audit_events_append_only
+        BEFORE UPDATE OR DELETE ON {COST_SCHEMA}.governance_audit_events
+        FOR EACH ROW EXECUTE FUNCTION {COST_SCHEMA}.reject_audit_event_mutation()
+        """
+    )
+
+
+def _drop_audit_immutability_guard() -> None:
+    op.execute(
+        f"DROP TRIGGER IF EXISTS trg_governance_audit_events_append_only "
+        f"ON {COST_SCHEMA}.governance_audit_events"
+    )
+    op.execute(f"DROP FUNCTION IF EXISTS {COST_SCHEMA}.reject_audit_event_mutation()")
+
+
 def _drop_legacy_unique_constraints() -> None:
     for table, name in LEGACY_UNIQUE_CONSTRAINTS:
         op.drop_constraint(name, table, type_="unique", schema=COST_SCHEMA)
@@ -359,6 +393,7 @@ def _create_scoped_foreign_keys() -> None:
 
 def upgrade() -> None:
     _create_import_job_tables()
+    _create_audit_immutability_guard()
 
     # 先拆子表外键，才能替换父表主键与唯一约束
     _drop_legacy_foreign_keys()
@@ -399,6 +434,7 @@ def _restore_legacy_foreign_keys() -> None:
 
 
 def downgrade() -> None:
+    _drop_audit_immutability_guard()
     for name, table, _parent, _cols, _refcols in SCOPED_FOREIGN_KEYS:
         op.drop_constraint(name, table, type_="foreignkey", schema=COST_SCHEMA)
     _drop_snapshot_unique_constraints()

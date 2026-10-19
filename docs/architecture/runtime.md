@@ -58,6 +58,8 @@ queued/running/retry_wait -> cancelled
 
 - API 创建 Run 时固化问题、会话上下文、最近消息、主体、路由请求、能力请求、版本和预算快照。
 - Worker 使用 `FOR UPDATE SKIP LOCKED` 领取 Run，并维持租约和心跳。
+- 主体身份在运行边界绑定：Worker 用 Run 行和 `request_json["principal"]` 校验固化主体，再用 `execution_context_from_state(..., authoritative_principal=...)` 校验状态；跨租户或伪造 checkpoint 被 `PermissionError` 拒绝，不重新解析客户端身份。
+- 治理审计事件只允许追加：`governance_audit_events` 上有 `BEFORE UPDATE OR DELETE` 触发器（`trg_governance_audit_events_append_only`）直接报错，不依赖调用方自觉。
 - LangGraph 以 `run_id` 作为 checkpoint `thread_id`；首次执行传入初始 State，接管时从 checkpoint 继续。
 - 图终态先进入 `finalizing`，再在一个数据库事务中写入 Turn、用户/助手消息、Audit、Artifact、会话上下文、结果事件和 `succeeded`。
 - `finalizing` 重试读取终态 checkpoint，不重新执行整张图。

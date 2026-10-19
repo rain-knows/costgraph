@@ -77,11 +77,15 @@ SHA-256 派生，写入为同目录临时文件 + 原子替换，读回时重新
 
 ### 治理审计
 
-`cost_data.governance_audit_events` 只追加：不提供 UPDATE/DELETE 代码路径。记录
+`cost_data.governance_audit_events` 只追加：不提供 UPDATE/DELETE 代码路径，并由
+`trg_governance_audit_events_append_only` 触发器在数据库层拦截任何修改或删除（`restrict_violation`）。记录
 `submitted/validated/validation_failed/approved/rejected/publishing/published/publish_failed/cancelled`
 动作与 `import_job`/`snapshot` 目标，`outcome` 只允许 `success/failure`。
 `detail` 只允许计数、错误码、状态、`attempt_count`、`batch_id` 等非敏感字段，
 不得写入 `raw_payload`、文件内容、令牌或连接串；没有查询 API。
+
+审计写入不依赖调用方自觉：`PostgresImportJobRepository` 只暴露 `append_audit_event`，
+且 `_safe_audit_detail()` 按白名单过滤细节字段，未列入白名单的键一律丢弃。
 
 ## 数据质量
 

@@ -657,10 +657,12 @@ class AgentWorker:
             if row is None:
                 raise RuntimeError("Run 不存在。")
             request = dict(row.request_json)
+            run_principal_id = row.principal_id
+            run_tenant_id = row.tenant_id
         principal = ExecutionPrincipal.model_validate(request["principal"])
         if (principal.principal_id, principal.tenant_id) != (
-            row.principal_id,
-            row.tenant_id,
+            run_principal_id,
+            run_tenant_id,
         ):
             raise PermissionError("主体与运行快照不一致")
         return principal

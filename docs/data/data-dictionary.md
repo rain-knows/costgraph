@@ -50,6 +50,8 @@
 `request_id` 可空；`detail` 为 `JSONB`，只允许计数、错误码、状态、`attempt_count`、`batch_id` 等
 非敏感字段，不得写入 `raw_payload`、文件内容、令牌或连接串。
 `ck_governance_audit_events_action` 与 `ck_governance_audit_events_outcome` 限定动作与结果取值；
+`trg_governance_audit_events_append_only`（`BEFORE UPDATE OR DELETE`）对任何修改或删除报 `restrict_violation`，
+使“只追加”由数据库约束而不是调用约定保证；
 `ix_governance_audit_events_tenant_created`、`ix_governance_audit_events_job` 支持租户时间线与任务查询。
 无 UPDATE/DELETE 代码路径。
 

@@ -32,7 +32,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 ## 读取与所有权边界
 
 - 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产成品零件和期间，并应用服务端 `ExecutionContext.data_scope`。投影表带有 `batch_id` 列但不引用成本事件，因此任何 join 必须显式带 `batch_id` 谓词，不能匿名按 `event_id` 关联。
-- 导入任务 Repository 复用同一 PostgreSQL 工厂：任务与审计按租户隔离，审计只追加。导入载荷存在本地内容寻址对象存储（默认 `IMPORT_OBJECT_STORE_ROOT`，缺省为系统临时目录下 `costgraph-import-objects`），数据库只存 `source_object_key`/`source_object_size`/`source_object_sha256`；`object_key` 由内容 SHA-256 派生，读回时重新校验摘要。
+- 导入任务 Repository 复用同一 PostgreSQL 工厂：任务与审计按租户隔离，审计只追加。审计表由 `trg_governance_audit_events_append_only` 触发器拦下任何 UPDATE/DELETE，测试清理需显式禁用触发器。导入载荷存在本地内容寻址对象存储（默认 `IMPORT_OBJECT_STORE_ROOT`，缺省为系统临时目录下 `costgraph-import-objects`），数据库只存 `source_object_key`/`source_object_size`/`source_object_sha256`；`object_key` 由内容 SHA-256 派生，读回时重新校验摘要。
 - 数据治理只读 Repository 复用同一 PostgreSQL 工厂；批次和错误按租户隔离，发布质量统计绑定当前 published batch、当前规则版本和 DataScope。
 - 会话、Turn、消息、Run、Trace 和 Artifact 的业务查询必须匹配 `tenant_id + principal_id`。
 - Worker 只领取数据库中已固化可信 owner 快照的 Run，不从客户端重新解释主体。

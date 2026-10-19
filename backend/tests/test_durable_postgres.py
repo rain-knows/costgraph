@@ -4,6 +4,7 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -16,6 +17,7 @@ from app.agent.graph import create_cost_agent_graph
 from app.db.engine import get_session_factory, reset_engine
 from app.db.models import (
     AgentArtifact,
+    DataLoadBatch,
     RuntimeAgentRun,
     RuntimeAgentWorker,
     RuntimeAuditTrace,
@@ -24,17 +26,67 @@ from app.db.models import (
     RuntimeTurn,
 )
 from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.domain.cost import CALCULATION_RULE_VERSION
 from app.domain.errors import AgentDomainError
 from app.main import create_app
 from app.repositories.postgres_conversation_repository import (
     PostgresConversationRepository,
 )
 from app.repositories.run_repository import PostgresRunRepository, utc_now
+from app.services.cost_data_import_service import CostDataImporter
 from app.services.health_service import readiness_snapshot
 from app.settings import get_settings
 from app.worker import AgentWorker
 
 QUESTION = "查询产品A 2026年6月单位成本，并说明成本构成 AUDIT_CANARY_51a2"
+
+SAMPLE_DIR = Path(__file__).resolve().parents[2] / "data" / "samples"
+
+
+def _sample_payload() -> dict[str, list[dict[str, object]]]:
+    def load(name: str) -> list[dict[str, object]]:
+        return json.loads((SAMPLE_DIR / f"{name}.json").read_text(encoding="utf-8"))
+
+    return {
+        "parts": load("parts"),
+        "events": load("cost_events"),
+        "inputs": load("cost_event_inputs"),
+        "records": load("cost_records"),
+    }
+
+
+def ensure_published_sample_snapshot(tenant_id: str) -> None:
+    """让 durable 测试自足：租户没有 published 快照时导入样例数据。
+
+    不能依赖带外的数据库补种，否则换机器或重建 costgraph_test 后
+    本文件的断言会因“没有已发布事实”而失败，且失败原因与代码无关。
+    已有 published 快照时直接返回，保持重复执行幂等。
+    """
+    with get_session_factory()() as session:
+        published = session.scalar(
+            select(DataLoadBatch.batch_id)
+            .where(
+                DataLoadBatch.tenant_id == tenant_id,
+                DataLoadBatch.status == "published",
+            )
+            .limit(1)
+        )
+    if published is not None:
+        return
+    importer = CostDataImporter()
+    outcome = importer.validate_payload(
+        tenant_id=tenant_id, source_system="pytest-sample", **_sample_payload()
+    )
+    assert outcome.error_rows == 0, [error.error_code for error in outcome.errors[:5]]
+    importer.publish_validated_snapshot(
+        tenant_id=tenant_id,
+        source_system="pytest-sample",
+        batch_id=uuid4(),
+        source_file="data/samples",
+        source_snapshot_hash=outcome.snapshot_hash,
+        calculation_rule_version=CALCULATION_RULE_VERSION,
+        **_sample_payload(),
+    )
 
 
 @pytest.fixture
@@ -53,7 +105,9 @@ def durable_settings(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr("app.worker.get_model_provider", lambda: FixtureModelProvider())
     reset_engine()
-    yield get_settings()
+    settings = get_settings()
+    ensure_published_sample_snapshot(settings.agent_tenant_id)
+    yield settings
     reset_engine()
 
 

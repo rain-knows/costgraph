@@ -82,6 +82,10 @@
 
 重复提交返回已有任务且 `duplicate: true`，不得新建任务，也不追加新的 `submitted` 审计事件。
 
+每次状态变化都追加一条 `governance_audit_events`；该表由
+`trg_governance_audit_events_append_only` 触发器禁止 UPDATE/DELETE，
+接口也不提供修改历史事件的路径。
+
 ### `POST /api/data-admin/imports/{job_id}/decision`
 
 ```json
