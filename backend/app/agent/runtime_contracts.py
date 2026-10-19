@@ -164,7 +164,7 @@ class RuntimeRunRequest(BaseModel):
     conversation_id: str | None = None
     turn_id: str | None = None
     message_id: str | None = None
-    principal: ExecutionPrincipal | None = None
+    principal: ExecutionPrincipal
     routing_mode: RoutingMode = "auto"
     requested_capabilities: list[str] | None = None
     conversation_context: dict[str, Any] = Field(default_factory=dict)

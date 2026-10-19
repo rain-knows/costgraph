@@ -1,9 +1,7 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.errors import domain_http_error
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import PrincipalDependency
 from app.domain.errors import AgentDomainError
 from app.schemas.agent import (
     ConversationCreateRequest,
@@ -22,7 +20,6 @@ from app.services.conversation_service import (
 )
 
 router = APIRouter()
-PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_server_principal)]
 
 
 def _http_error(exc: AgentDomainError) -> HTTPException:

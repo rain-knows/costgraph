@@ -14,6 +14,7 @@ from sqlalchemy import delete, func, select, text, update
 import app.repositories.run_repository as run_repository_module
 from app.agent.checkpoint import open_postgres_checkpointer
 from app.agent.graph import create_cost_agent_graph
+from app.auth.context import get_current_principal
 from app.db.engine import get_session_factory, reset_engine
 from app.db.models import (
     AgentArtifact,
@@ -25,7 +26,7 @@ from app.db.models import (
     RuntimeMessage,
     RuntimeTurn,
 )
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.domain.authorization import ExecutionPrincipal
 from app.domain.cost import CALCULATION_RULE_VERSION
 from app.domain.errors import AgentDomainError
 from app.main import create_app
@@ -414,7 +415,7 @@ def test_durable_run_api_sse_cancel_owner_isolation_and_readiness(
     conversation_id = conversation["conversation_id"]
     worker_id = f"worker_api_test_{uuid4().hex}"
     app = create_app(durable_settings)
-    app.dependency_overrides[get_server_principal] = lambda: owner
+    app.dependency_overrides[get_current_principal] = lambda: owner
     client = TestClient(app, raise_server_exceptions=False)
     run_id = ""
     repository.register_worker(
@@ -485,7 +486,7 @@ def test_durable_run_api_sse_cancel_owner_isolation_and_readiness(
         assert f"id: {first_event_id}" not in replay.text
         assert "AUDIT_CANARY_9c31" not in replay.text
 
-        app.dependency_overrides[get_server_principal] = lambda: intruder
+        app.dependency_overrides[get_current_principal] = lambda: intruder
         hidden = client.get(f"/api/v2/conversations/{conversation_id}/runs/{run_id}")
         assert hidden.status_code == 404
         assert hidden.json()["detail"]["code"] == "run_not_found"

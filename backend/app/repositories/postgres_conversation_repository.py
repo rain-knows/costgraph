@@ -16,7 +16,7 @@ from app.db.models import (
     RuntimeConversation,
     RuntimeMessage,
 )
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.domain.authorization import ExecutionPrincipal
 from app.domain.conversation import empty_conversation_context
 from app.domain.errors import (
     ConversationBusyError,
@@ -27,12 +27,6 @@ from app.domain.errors import (
 
 def _now() -> datetime:
     return datetime.now(UTC)
-
-
-def _resolve_principal(
-    principal: ExecutionPrincipal | None,
-) -> ExecutionPrincipal:
-    return principal or get_server_principal()
 
 
 class PostgresConversationRepository:
@@ -55,9 +49,9 @@ class PostgresConversationRepository:
         title: str = "新建成本 Agent 对话",
         routing_mode: str = "auto",
         enabled_capabilities: list[str] | None = None,
-        principal: ExecutionPrincipal | None = None,
+        principal: ExecutionPrincipal,
     ) -> dict[str, Any]:
-        owner = _resolve_principal(principal)
+        owner = principal
         conversation_id = f"conv_{uuid4().hex}"
         created_at = _now()
         capabilities = validate_capability_ids(
@@ -82,10 +76,8 @@ class PostgresConversationRepository:
             session.commit()
         return self.get_conversation(conversation_id, owner)
 
-    def list_conversations(
-        self, principal: ExecutionPrincipal | None = None
-    ) -> list[dict[str, Any]]:
-        owner = _resolve_principal(principal)
+    def list_conversations(self, principal: ExecutionPrincipal) -> list[dict[str, Any]]:
+        owner = principal
         with self._session() as session:
             message_count = (
                 select(func.count(RuntimeMessage.message_id))
@@ -113,9 +105,9 @@ class PostgresConversationRepository:
         self,
         conversation_id: str,
         title: str,
-        principal: ExecutionPrincipal | None = None,
+        principal: ExecutionPrincipal,
     ) -> dict[str, Any]:
-        owner = _resolve_principal(principal)
+        owner = principal
         normalized_title = title.strip()
         if not normalized_title:
             raise ValueError("会话标题不能为空")
@@ -137,9 +129,9 @@ class PostgresConversationRepository:
     def delete_conversation(
         self,
         conversation_id: str,
-        principal: ExecutionPrincipal | None = None,
+        principal: ExecutionPrincipal,
     ) -> None:
-        owner = _resolve_principal(principal)
+        owner = principal
         with self._session() as session:
             conversation = self._owned_conversation(
                 session, conversation_id, owner, for_update=True
@@ -180,9 +172,9 @@ class PostgresConversationRepository:
     def get_conversation(
         self,
         conversation_id: str,
-        principal: ExecutionPrincipal | None = None,
+        principal: ExecutionPrincipal,
     ) -> dict[str, Any]:
-        owner = _resolve_principal(principal)
+        owner = principal
         with self._session() as session:
             conversation = self._owned_conversation(session, conversation_id, owner)
             if conversation is None:
@@ -221,7 +213,7 @@ class PostgresConversationRepository:
     def get_context(
         self,
         conversation_id: str,
-        principal: ExecutionPrincipal | None = None,
+        principal: ExecutionPrincipal,
     ) -> dict[str, Any]:
         return self.get_conversation(conversation_id, principal)["context"]
 
@@ -231,9 +223,9 @@ class PostgresConversationRepository:
         *,
         limit: int,
         before: str | None = None,
-        principal: ExecutionPrincipal | None = None,
+        principal: ExecutionPrincipal,
     ) -> dict[str, Any]:
-        owner = _resolve_principal(principal)
+        owner = principal
         role_order = case((RuntimeMessage.role == "user", 0), else_=1)
         with self._session() as session:
             if self._owned_conversation(session, conversation_id, owner) is None:

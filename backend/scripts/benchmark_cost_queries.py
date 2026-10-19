@@ -12,7 +12,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.db.engine import get_engine
-from app.domain.authorization import get_server_principal
+from app.domain.authorization import ExecutionPrincipal
 from app.services.cost_data_query_service import CostDataQueryService
 
 ITERATIONS = 10
@@ -21,7 +21,11 @@ P95_TARGET_SECONDS = 1.0
 
 def main() -> int:
     service = CostDataQueryService()
-    principal = get_server_principal()
+    principal = ExecutionPrincipal(
+        principal_id="benchmark-user",
+        tenant_id="benchmark-tenant",
+        roles=("tenant_admin",),
+    )
     calls = {
         "overview": lambda: service.overview("2026-06", principal),
         "list": lambda: service.list_finished_batches(

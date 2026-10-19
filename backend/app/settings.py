@@ -27,15 +27,17 @@ class AppSettings(BaseSettings):
     cost_database_pool_size: int = Field(default=5, ge=1)
     cost_database_max_overflow: int = Field(default=10, ge=0)
 
-    agent_principal_id: str = "local-costgraph-user"
-    agent_tenant_id: str = "local-costgraph-tenant"
-    agent_principal_roles: str = "viewer"
     agent_server_allowed_capabilities: str = (
         "system_help,cost_calculation,report_generation"
     )
-    agent_allowed_part_ids: str = ""
-    agent_allowed_period_start: str | None = None
-    agent_allowed_period_end: str | None = None
+
+    oidc_issuer: str = ""
+    oidc_audience: str = ""
+    oidc_jwks_uri: str = ""
+    oidc_tenant_claim: str = "tenant_id"
+    oidc_roles_claim: str = "roles"
+    oidc_jwks_cache_seconds: int = Field(default=600, ge=0)
+    oidc_leeway_seconds: int = Field(default=30, ge=0)
 
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-v4-pro"
@@ -67,6 +69,13 @@ class AppSettings(BaseSettings):
                 errors.append("APP_VERSION 必须是非 dev 的发布版本")
             if self.audit_trace_mode != "metadata":
                 errors.append("AUDIT_TRACE_MODE 必须为 metadata")
+            for field_name, env_name in (
+                ("oidc_issuer", "OIDC_ISSUER"),
+                ("oidc_audience", "OIDC_AUDIENCE"),
+                ("oidc_jwks_uri", "OIDC_JWKS_URI"),
+            ):
+                if not str(getattr(self, field_name)).strip():
+                    errors.append(f"必须配置 {env_name}")
             origins = self.cors_origins
             if (
                 "cors_allowed_origins" not in self.model_fields_set

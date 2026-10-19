@@ -1,3 +1,5 @@
+from auth_helpers import TEST_PRINCIPAL
+
 import app.agent.tools as agent_tools
 from app.agent.graph import run_runtime, stream_runtime
 from app.agent.nodes import _default_comparison_period
@@ -16,6 +18,7 @@ from evaluation.fixture_model_provider import (
 
 def _request(question: str) -> RuntimeRunRequest:
     return RuntimeRunRequest(
+        principal=TEST_PRINCIPAL,
         question=question,
         requested_capabilities=[
             "system_help",

@@ -1,4 +1,5 @@
 import pytest
+from auth_helpers import TEST_PRINCIPAL
 
 from app.agent.capabilities import CAPABILITY_REGISTRY
 from app.agent.harness import AgentHarness
@@ -17,6 +18,7 @@ def test_harness_intersects_requested_authorized_and_server_capabilities(
     monkeypatch.setenv("AGENT_SERVER_ALLOWED_CAPABILITIES", "system_help")
     prepared = AgentHarness().prepare(
         RuntimeRunRequest(
+            principal=TEST_PRINCIPAL,
             question="核算产品A",
             requested_capabilities=["system_help", "cost_calculation"],
         )
@@ -139,21 +141,23 @@ def test_worker_boundary_rejects_checkpoint_from_another_tenant() -> None:
         assert_state_principal({}, authoritative)
 
 
-def test_invalid_server_role_configuration_fails_closed(monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_PRINCIPAL_ROLES", "")
+def test_missing_oidc_configuration_fails_closed(monkeypatch) -> None:
+    monkeypatch.setenv("OIDC_ISSUER", "")
+    monkeypatch.setenv("OIDC_AUDIENCE", "")
+    monkeypatch.setenv("OIDC_JWKS_URI", "")
+    from app.auth.oidc import OIDCUnavailableError, get_oidc_verifier
     from app.settings import reset_settings
 
     reset_settings()
-    with pytest.raises(RuntimeError, match="必须配置"):
-        # Empty configured roles are rejected before any endpoint can authorize.
-        from app.domain.authorization import get_server_principal
-
-        get_server_principal()
+    with pytest.raises(OIDCUnavailableError, match="未配置"):
+        # 缺少 OIDC 参数时必须在授权前就不成立，而不是回退到环境变量身份。
+        get_oidc_verifier()
 
 
 def test_report_generation_requires_cost_calculation_dependency() -> None:
     prepared = AgentHarness().prepare(
         RuntimeRunRequest(
+            principal=TEST_PRINCIPAL,
             question="生成报表",
             requested_capabilities=["report_generation"],
         )

@@ -9,9 +9,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.artifacts import router as artifacts_router
+from app.api.audit import router as audit_router
 from app.api.conversations import router as conversations_router
 from app.api.cost_data import router as cost_data_router
 from app.api.data_admin import router as data_admin_router
+from app.api.iam import router as iam_router
 from app.api.me import router as me_router
 from app.api.runtime_runs import router as runtime_runs_router
 from app.services.health_service import health_snapshot, readiness_snapshot
@@ -48,10 +50,13 @@ async def handle_http_exception(request: Request, exc: HTTPException) -> JSONRes
         if isinstance(detail.get("details"), dict)
         else {},
     }
+    headers = {"X-Request-ID": request.state.request_id}
+    if exc.headers:
+        headers.update(exc.headers)
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": body},
-        headers={"X-Request-ID": request.state.request_id},
+        headers=headers,
     )
 
 
@@ -140,6 +145,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     api.include_router(artifacts_router, prefix="/api/artifacts", tags=["artifacts"])
     api.include_router(data_admin_router, prefix="/api/data-admin", tags=["data-admin"])
+    api.include_router(iam_router, prefix="/api/iam", tags=["iam"])
+    api.include_router(audit_router, prefix="/api/audit", tags=["audit"])
     api.include_router(me_router, prefix="/api/me", tags=["me"])
     api.include_router(cost_data_router, prefix="/api/cost-data", tags=["cost-data"])
     api.include_router(

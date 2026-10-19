@@ -16,7 +16,8 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import get_current_principal
+from app.domain.authorization import ExecutionPrincipal
 from app.main import create_app
 from app.repositories.import_job_repository import (
     CANCELLABLE_JOB_STATUSES,
@@ -232,7 +233,7 @@ def import_api():
     app.dependency_overrides[get_import_job_service] = lambda: ImportJobService(
         repository, store
     )
-    app.dependency_overrides[get_server_principal] = lambda: _principal("tenant_admin")
+    app.dependency_overrides[get_current_principal] = lambda: _principal("tenant_admin")
     client = TestClient(app, raise_server_exceptions=False)
     try:
         yield client, repository, store, app
@@ -379,7 +380,7 @@ def test_unknown_payload_table_is_rejected_without_creating_job(import_api):
 
 def test_viewer_is_denied_on_every_import_endpoint(import_api):
     client, _, _, app = import_api
-    app.dependency_overrides[get_server_principal] = lambda: _principal("viewer")
+    app.dependency_overrides[get_current_principal] = lambda: _principal("viewer")
     assert _submit(client).status_code == 403
     assert (
         _submit(client).json()["detail"]["code"] == "data_import_submit_access_denied"
@@ -404,7 +405,9 @@ def test_viewer_is_denied_on_every_import_endpoint(import_api):
 
 def test_data_operator_can_submit_read_and_cancel_but_not_approve(import_api):
     client, repository, _, app = import_api
-    app.dependency_overrides[get_server_principal] = lambda: _principal("data_operator")
+    app.dependency_overrides[get_current_principal] = lambda: _principal(
+        "data_operator"
+    )
     submitted = _submit(client)
     assert submitted.status_code == 200
     job_id = submitted.json()["job_id"]
@@ -430,7 +433,9 @@ def test_data_approver_can_read_and_decide_but_not_submit(import_api):
     job_id = submitted.json()["job_id"]
     repository.force_status(UUID(job_id), "approval_pending")
 
-    app.dependency_overrides[get_server_principal] = lambda: _principal("data_approver")
+    app.dependency_overrides[get_current_principal] = lambda: _principal(
+        "data_approver"
+    )
     assert _submit(client, key="approver-submit").status_code == 403
     assert client.get("/api/data-admin/imports").status_code == 200
     assert client.get(f"/api/data-admin/imports/{job_id}").status_code == 200
@@ -456,7 +461,9 @@ def test_decision_on_non_approval_pending_status_is_409(import_api):
     client, repository, _, app = import_api
     submitted = _submit(client)
     job_id = submitted.json()["job_id"]
-    app.dependency_overrides[get_server_principal] = lambda: _principal("data_approver")
+    app.dependency_overrides[get_current_principal] = lambda: _principal(
+        "data_approver"
+    )
     for status in ("submitted", "validating", "published", "cancelled"):
         repository.force_status(UUID(job_id), status)
         response = client.post(
@@ -480,7 +487,9 @@ def test_cancel_is_409_outside_cancellable_statuses(import_api):
     client, repository, _, app = import_api
     submitted = _submit(client)
     job_id = submitted.json()["job_id"]
-    app.dependency_overrides[get_server_principal] = lambda: _principal("data_operator")
+    app.dependency_overrides[get_current_principal] = lambda: _principal(
+        "data_operator"
+    )
     for status in ("approved", "publishing", "published", "rejected"):
         repository.force_status(UUID(job_id), status)
         response = client.post(f"/api/data-admin/imports/{job_id}/cancel")
@@ -500,7 +509,7 @@ def test_cross_tenant_reads_and_writes_are_404(import_api):
     job_id = submitted.json()["job_id"]
     repository.force_status(UUID(job_id), "approval_pending")
 
-    app.dependency_overrides[get_server_principal] = lambda: _principal(
+    app.dependency_overrides[get_current_principal] = lambda: _principal(
         "tenant_admin", tenant_id="tenant-b"
     )
     for path in (
@@ -527,7 +536,9 @@ def test_audit_events_are_append_only_and_free_of_secrets(import_api):
     submitted = _submit(client, payload=payload)
     job_id = submitted.json()["job_id"]
     repository.force_status(UUID(job_id), "approval_pending")
-    app.dependency_overrides[get_server_principal] = lambda: _principal("data_approver")
+    app.dependency_overrides[get_current_principal] = lambda: _principal(
+        "data_approver"
+    )
     client.post(
         f"/api/data-admin/imports/{job_id}/decision",
         json={"decision": "approve", "reason": f"canary={PAYLOAD_CANARY}"},

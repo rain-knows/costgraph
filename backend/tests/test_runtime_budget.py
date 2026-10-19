@@ -1,6 +1,7 @@
 from time import sleep
 
 import pytest
+from auth_helpers import TEST_PRINCIPAL
 
 from app.agent.harness import AgentHarness, ToolRegistry
 from app.agent.runtime_contracts import RuntimeBudgetLimits, ToolSpec
@@ -61,7 +62,9 @@ def _services(
 
 def test_tool_budget_is_reserved_before_execution() -> None:
     services = _services(tool_calls=1)
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     first = services.invoke_tool("echo", {"value": "ok"}, context, node="node")
     second = services.invoke_tool("echo", {"value": "no"}, context, node="node")
     assert first.value == "ok"
@@ -145,7 +148,9 @@ def test_tool_timeout_has_stable_error() -> None:
         ),
         lambda execution_context: sleep(0.05),
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     outcome = services.invoke_tool("slow", {}, context, node="node")
     assert outcome.error_code == "tool_timeout"
     assert outcome.retryable is True
@@ -183,7 +188,9 @@ def test_unauthorized_tool_does_not_execute_function() -> None:
         limits=RuntimeBudgetLimits(),
     )
     services.start_run("run-test")
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     outcome = services.invoke_tool("restricted", {}, context, node="node")
     assert outcome.error_code == "tool_access_denied"
     assert executed is False
@@ -192,7 +199,9 @@ def test_unauthorized_tool_does_not_execute_function() -> None:
 
 def test_invalid_tool_input_does_not_consume_budget() -> None:
     services = _services(tool_calls=1)
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     outcome = services.invoke_tool("echo", {}, context, node="node")
     assert outcome.error_code == "tool_validation_error"
     assert services.usage.tool_calls == 0

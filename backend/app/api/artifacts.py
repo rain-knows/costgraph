@@ -1,9 +1,9 @@
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.errors import domain_http_error
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import PrincipalDependency
 from app.domain.errors import AgentDomainError
 from app.schemas.artifact import (
     ArtifactDetailResponse,
@@ -18,7 +18,6 @@ from app.services.artifact_service import (
 )
 
 router = APIRouter()
-PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_server_principal)]
 
 
 def _http_error(exc: AgentDomainError) -> HTTPException:

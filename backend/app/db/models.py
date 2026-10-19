@@ -14,13 +14,14 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
     Uuid,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 COST_SCHEMA = "cost_data"
@@ -518,7 +519,8 @@ class GovernanceAuditEvent(Base):
         CheckConstraint(
             "action in ('submitted', 'validated', 'validation_failed', "
             "'approved', 'rejected', 'publishing', 'published', "
-            "'publish_failed', 'cancelled')",
+            "'publish_failed', 'cancelled', "
+            "'iam.roles_updated', 'iam.scope_updated')",
             name="ck_governance_audit_events_action",
         ),
         CheckConstraint(
@@ -545,6 +547,67 @@ class GovernanceAuditEvent(Base):
     detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+
+class IamPrincipalRole(Base):
+    __tablename__ = "iam_principal_roles"
+    __table_args__ = (
+        PrimaryKeyConstraint("tenant_id", "principal_id"),
+        CheckConstraint(
+            "cardinality(roles) > 0", name="ck_iam_principal_roles_non_empty"
+        ),
+        CheckConstraint(
+            "roles <@ ARRAY['viewer','data_operator','data_approver',"
+            "'tenant_admin']::varchar[]",
+            name="ck_iam_principal_roles_known",
+        ),
+        Index("ix_iam_principal_roles_tenant", "tenant_id"),
+        {"schema": COST_SCHEMA},
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    roles: Mapped[list[str]] = mapped_column(ARRAY(String(32)), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class IamDataScope(Base):
+    __tablename__ = "iam_data_scopes"
+    __table_args__ = (
+        PrimaryKeyConstraint("tenant_id", "principal_id"),
+        CheckConstraint(
+            "allowed_period_start IS NULL OR "
+            "allowed_period_start ~ '^\\d{4}-(0[1-9]|1[0-2])$'",
+            name="ck_iam_data_scopes_start_format",
+        ),
+        CheckConstraint(
+            "allowed_period_end IS NULL OR "
+            "allowed_period_end ~ '^\\d{4}-(0[1-9]|1[0-2])$'",
+            name="ck_iam_data_scopes_end_format",
+        ),
+        CheckConstraint(
+            "allowed_period_start IS NULL OR allowed_period_end IS NULL "
+            "OR allowed_period_start <= allowed_period_end",
+            name="ck_iam_data_scopes_period_order",
+        ),
+        Index("ix_iam_data_scopes_tenant", "tenant_id"),
+        {"schema": COST_SCHEMA},
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    allowed_part_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(String(64)), nullable=False, default=list
+    )
+    allowed_period_start: Mapped[str | None] = mapped_column(String(7))
+    allowed_period_end: Mapped[str | None] = mapped_column(String(7))
+    updated_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
 
 

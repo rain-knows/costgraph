@@ -82,6 +82,15 @@ class ArtifactPersistenceError(AgentDomainError):
         )
 
 
+class IamPrincipalNotFoundError(AgentDomainError):
+    def __init__(self, principal_id: str) -> None:
+        super().__init__(
+            "iam_principal_not_found",
+            "当前租户不存在指定主体。",
+            details={"principal_id": principal_id},
+        )
+
+
 class CostDataNotFoundError(AgentDomainError):
     def __init__(self, identifier: str, period: str | None = None) -> None:
         details = {"identifier": identifier}

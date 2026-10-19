@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Requ
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.errors import domain_http_error
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import PrincipalDependency
 from app.domain.errors import AgentDomainError, CostProjectionUnavailableError
 from app.schemas.data_admin import (
     BatchStatus,
@@ -32,7 +32,6 @@ from app.services.import_job_service import (
 )
 
 router = APIRouter()
-PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_server_principal)]
 ServiceDependency = Annotated[DataAdminService, Depends(get_data_admin_service)]
 ImportServiceDependency = Annotated[ImportJobService, Depends(get_import_job_service)]
 PageQuery = Annotated[int, Query(ge=1)]

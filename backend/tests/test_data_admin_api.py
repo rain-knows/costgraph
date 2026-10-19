@@ -3,10 +3,10 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.auth.context import get_current_principal
 from app.domain.authorization import (
     ExecutionContext,
     ExecutionPrincipal,
-    get_server_principal,
 )
 from app.main import create_app
 from app.repositories.postgres_data_admin_repository import (
@@ -93,7 +93,7 @@ class FakeRepository:
 
 def _client(principal):
     app = create_app()
-    app.dependency_overrides[get_server_principal] = lambda: principal
+    app.dependency_overrides[get_current_principal] = lambda: principal
     app.dependency_overrides[get_data_admin_service] = lambda: DataAdminService(
         FakeRepository()
     )
@@ -153,7 +153,7 @@ def test_tenant_admin_reads_tenant_scoped_batches_snapshot_and_errors():
 
 def test_database_factory_error_is_stable_503(monkeypatch):
     client_app = create_app()
-    client_app.dependency_overrides[get_server_principal] = lambda: ExecutionPrincipal(
+    client_app.dependency_overrides[get_current_principal] = lambda: ExecutionPrincipal(
         principal_id="tenant-admin", tenant_id="tenant-a", roles=("tenant_admin",)
     )
     client_app.dependency_overrides[get_data_admin_service] = lambda: DataAdminService()

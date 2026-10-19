@@ -4,10 +4,12 @@ import json
 from uuid import uuid4
 
 import pytest
+from auth_helpers import TEST_PRINCIPAL
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.agent.trace import build_audit_trace
+from app.auth.context import get_current_principal
 from app.main import app
 from app.repositories.run_repository import validate_run_transition
 from app.services.llm_service import LLMUnavailableError
@@ -54,6 +56,9 @@ def test_deployment_profiles_enforce_production_gates(app_env: str) -> None:
         cost_database_url="postgresql://user:pass@localhost/example",
         audit_trace_mode="metadata",
         cors_allowed_origins="https://cost.example.com",
+        oidc_issuer="https://idp.example.com",
+        oidc_audience="costgraph",
+        oidc_jwks_uri="https://idp.example.com/jwks",
     )
     assert valid.resolved_database_url.startswith("postgresql+psycopg://")
 
@@ -71,13 +76,15 @@ def test_settings_cache_can_be_reset(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_empty_optional_scope_environment_values_use_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("AGENT_ALLOWED_PERIOD_START", "")
-    monkeypatch.setenv("AGENT_ALLOWED_PERIOD_END", "")
+    monkeypatch.setenv("OIDC_ISSUER", "")
+    monkeypatch.setenv("OIDC_AUDIENCE", "")
+    monkeypatch.setenv("OIDC_JWKS_URI", "")
 
     settings = AppSettings(_env_file=None)
 
-    assert settings.agent_allowed_period_start is None
-    assert settings.agent_allowed_period_end is None
+    assert settings.oidc_issuer == ""
+    assert settings.oidc_audience == ""
+    assert settings.oidc_jwks_uri == ""
 
 
 def test_run_state_machine_rejects_illegal_transitions() -> None:
@@ -174,7 +181,14 @@ def test_health_and_error_contract_do_not_expose_secrets(
     )
     reset_settings()
     client = TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides[get_current_principal] = lambda: TEST_PRINCIPAL
+    try:
+        _assert_health_and_error_contract(client, canary)
+    finally:
+        app.dependency_overrides.clear()
 
+
+def _assert_health_and_error_contract(client: TestClient, canary: str) -> None:
     health = client.get("/api/health")
     assert health.status_code == 503
     assert health.json()["durable_runs"] is True

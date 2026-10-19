@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.errors import domain_http_error
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import PrincipalDependency
 from app.domain.errors import AgentDomainError
 from app.schemas.cost_data import (
     CostOverview,
@@ -20,7 +20,6 @@ from app.services.cost_data_query_service import (
 )
 
 router = APIRouter()
-PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_server_principal)]
 ServiceDependency = Annotated[
     CostDataQueryService, Depends(get_cost_data_query_service)
 ]

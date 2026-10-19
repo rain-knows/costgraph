@@ -1,4 +1,5 @@
 import pytest
+from auth_helpers import TEST_PRINCIPAL
 
 from app.agent.harness import ToolRegistry
 from app.agent.runtime_contracts import ToolSpec
@@ -18,7 +19,9 @@ def test_tool_registry_schema_and_deterministic_metadata() -> None:
         ),
         lambda value, execution_context: value,
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     specs = registry.available_for(context)
     assert specs[0].tool_id == "echo"
     assert specs[0].version == "echo-v1"
@@ -34,7 +37,9 @@ def test_tool_registry_classifies_invalid_arguments() -> None:
         ToolSpec(tool_id="needs-value", required_capabilities=["system_help"]),
         lambda required, execution_context: required,
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     _, result = registry.invoke("needs-value", {}, context)
     assert result.status == "error"
     assert result.error_category == "validation"
@@ -42,7 +47,9 @@ def test_tool_registry_classifies_invalid_arguments() -> None:
 
 def test_tool_registry_classifies_unknown_tool() -> None:
     registry = ToolRegistry()
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     _, result = registry.invoke("missing", {}, context)
     assert result.status == "error"
     assert result.error_category == "not_found"
@@ -71,7 +78,9 @@ def test_tool_registry_validates_input_before_execution() -> None:
         ),
         tool,
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     _, result = registry.invoke("typed", {"value": 42}, context)
     assert result.status == "error"
     assert result.error_category == "validation"
@@ -89,7 +98,9 @@ def test_tool_registry_validates_output_after_execution() -> None:
         ),
         lambda execution_context: 42,
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     _, result = registry.invoke("bad-output", {}, context)
     assert result.status == "error"
     assert result.error_category == "validation"
@@ -110,7 +121,9 @@ def test_tool_registry_rejects_runtime_context_override() -> None:
         ToolSpec(tool_id="context", required_capabilities=["system_help"]),
         lambda execution_context: execution_context,
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     _, result = registry.invoke(
         "context", {"execution_context": {"principal": "forged"}}, context
     )
@@ -140,7 +153,9 @@ def test_tool_retryability_is_controlled_by_spec() -> None:
         ),
         timeout,
     )
-    context = build_execution_context("manual", ["system_help"])
+    context = build_execution_context(
+        "manual", ["system_help"], principal=TEST_PRINCIPAL
+    )
     _, never = registry.invoke("never-retry", {}, context)
     _, transient = registry.invoke("retry-transient", {}, context)
     assert never.retryable is False

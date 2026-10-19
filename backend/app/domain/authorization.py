@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -87,22 +86,6 @@ def _validate_capability_role_metadata() -> None:
 _validate_capability_role_metadata()
 
 
-class ExecutionPrincipal(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    principal_id: str = Field(min_length=1)
-    tenant_id: str = Field(min_length=1)
-    roles: tuple[RoleId, ...]
-
-    @model_validator(mode="after")
-    def validate_roles(self) -> ExecutionPrincipal:
-        if not self.roles:
-            raise ValueError("执行主体至少需要一个角色")
-        if len(set(self.roles)) != len(self.roles):
-            raise ValueError("执行主体角色不能重复")
-        return self
-
-
 class DataScope(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -123,6 +106,29 @@ class DataScope(BaseModel):
             and self.allowed_period_start > self.allowed_period_end
         ):
             raise ValueError("授权期间开始值不能晚于结束值")
+        return self
+
+
+class ExecutionPrincipal(BaseModel):
+    """已认证主体；数据范围随主体一起固化，供 Run/Import Job 快照复用。
+
+    ``data_scope`` 空集表示未被限制，只能由管理员写入 ``iam_data_scopes``
+    后收窄；它不是客户输入，而是服务端确定性的授权事实。
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    principal_id: str = Field(min_length=1)
+    tenant_id: str = Field(min_length=1)
+    roles: tuple[RoleId, ...]
+    data_scope: DataScope = DataScope()
+
+    @model_validator(mode="after")
+    def validate_roles(self) -> ExecutionPrincipal:
+        if not self.roles:
+            raise ValueError("执行主体至少需要一个角色")
+        if len(set(self.roles)) != len(self.roles):
+            raise ValueError("执行主体角色不能重复")
         return self
 
 
@@ -188,30 +194,6 @@ class ExecutionContext(BaseModel):
         }
 
 
-def _configured_roles(raw_value: str) -> tuple[RoleId, ...]:
-    raw_items = raw_value.split(",")
-    roles = [item.strip() for item in raw_items]
-    if not raw_value.strip() or any(not item for item in roles):
-        raise RuntimeError("AGENT_PRINCIPAL_ROLES 必须配置一个或多个非空角色")
-    unknown_roles = sorted(set(roles) - set(ROLE_CAPABILITIES))
-    if unknown_roles:
-        raise RuntimeError(f"未知服务端 Agent 角色：{', '.join(unknown_roles)}")
-    if len(set(roles)) != len(roles):
-        raise RuntimeError("AGENT_PRINCIPAL_ROLES 不能包含重复角色")
-    return tuple(roles)  # type: ignore[return-value]
-
-
-def get_server_principal() -> ExecutionPrincipal:
-    settings = get_settings()
-    return ExecutionPrincipal(
-        principal_id=settings.agent_principal_id,
-        tenant_id=settings.agent_tenant_id,
-        roles=_configured_roles(
-            os.environ.get("AGENT_PRINCIPAL_ROLES", settings.agent_principal_roles)
-        ),
-    )
-
-
 def _authorized_capabilities(principal: ExecutionPrincipal) -> list[CapabilityId]:
     authorized: list[CapabilityId] = []
     for capability in ALL_CAPABILITY_IDS:
@@ -235,20 +217,11 @@ def _authorized_permissions(principal: ExecutionPrincipal) -> list[PermissionId]
     return authorized
 
 
-def _data_scope() -> DataScope:
-    settings = get_settings()
-    return DataScope(
-        source="postgresql_cost_data",
-        allowed_part_ids=tuple(settings.csv_values("agent_allowed_part_ids")),
-        allowed_period_start=settings.agent_allowed_period_start,
-        allowed_period_end=settings.agent_allowed_period_end,
-    )
-
-
 def _build_context_from_requests(
     principal: ExecutionPrincipal,
     requested: list[CapabilityId],
     requested_permissions: list[str] | None,
+    data_scope: DataScope,
 ) -> ExecutionContext:
     authorized = _authorized_capabilities(principal)
     server_allowed = _server_allowed_capabilities()
@@ -291,7 +264,7 @@ def _build_context_from_requests(
         authorized_permissions=tuple(authorized_permissions),
         server_allowed_permissions=tuple(server_allowed_permissions),
         effective_permissions=tuple(effective_permissions),
-        data_scope=_data_scope(),
+        data_scope=data_scope,
     )
 
 
@@ -300,17 +273,23 @@ def build_execution_context(
     enabled_capabilities: list[str] | None = None,
     *,
     requested_permissions: list[str] | None = None,
-    principal: ExecutionPrincipal | None = None,
+    principal: ExecutionPrincipal,
+    data_scope: DataScope | None = None,
 ) -> ExecutionContext:
-    owner = principal or get_server_principal()
     requested = normalize_capabilities(routing_mode, enabled_capabilities)
-    return _build_context_from_requests(owner, requested, requested_permissions)
+    return _build_context_from_requests(
+        principal,
+        requested,
+        requested_permissions,
+        data_scope or principal.data_scope,
+    )
 
 
 def execution_context_from_state(
     value: object,
     *,
     authoritative_principal: ExecutionPrincipal | None = None,
+    data_scope: DataScope | None = None,
 ) -> ExecutionContext:
     """Rebuild authorization from persisted requests, never trust derived fields.
 
@@ -321,6 +300,11 @@ def execution_context_from_state(
     frozen in that run's row. Callers inside a run have no authoritative
     principal of their own and omit it, so identity is bound once at the run
     boundary instead of being re-resolved against ambient configuration.
+
+    ``data_scope`` follows the same rule: the run boundary passes the scope
+    frozen with the run, and API callers pass the authenticated principal's
+    scope. Persisted state is only a fallback; it cannot widen the caller's
+    own scope.
     """
     is_model = isinstance(value, ExecutionContext)
     raw = value.model_dump(mode="python") if is_model else value
@@ -331,10 +315,12 @@ def execution_context_from_state(
         principal.principal_id,
         principal.tenant_id,
         principal.roles,
+        principal.data_scope,
     ) != (
         authoritative_principal.principal_id,
         authoritative_principal.tenant_id,
         authoritative_principal.roles,
+        authoritative_principal.data_scope,
     ):
         raise PermissionError("主体与当前服务端主体不一致")
     requested = validate_capability_ids(list(raw.get("requested_capabilities") or []))
@@ -342,4 +328,5 @@ def execution_context_from_state(
         principal,
         requested,
         list(raw.get("requested_permissions") or []),
+        data_scope or principal.data_scope,
     )

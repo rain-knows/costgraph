@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.errors import domain_http_error, public_error
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import PrincipalDependency
 from app.domain.errors import AgentDomainError
 from app.schemas.runtime import RuntimeRunCreateRequest, RuntimeRunResponse
 from app.services.runtime_service import (
@@ -20,7 +19,6 @@ from app.services.runtime_service import (
 )
 
 router = APIRouter()
-PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_server_principal)]
 
 
 @router.post(

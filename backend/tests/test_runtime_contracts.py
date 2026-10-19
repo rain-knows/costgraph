@@ -1,4 +1,5 @@
 import pytest
+from auth_helpers import TEST_PRINCIPAL
 from pydantic import ValidationError
 
 from app.agent.runtime_contracts import (
@@ -13,13 +14,16 @@ from app.agent.runtime_contracts import (
 
 def test_runtime_request_validates_capabilities() -> None:
     request = RuntimeRunRequest(
+        principal=TEST_PRINCIPAL,
         question="核算产品A",
         requested_capabilities=["cost_calculation"],
     )
     assert request.requested_capabilities == ["cost_calculation"]
 
     with pytest.raises(ValueError, match="未知能力"):
-        RuntimeRunRequest(question="x", requested_capabilities=["admin"])
+        RuntimeRunRequest(
+            principal=TEST_PRINCIPAL, question="x", requested_capabilities=["admin"]
+        )
 
 
 def test_runtime_contracts_reject_invalid_outcome_and_tool_status() -> None:

@@ -2,7 +2,8 @@ from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.auth.context import get_current_principal
+from app.domain.authorization import ExecutionPrincipal
 from app.main import create_app
 from app.services.cost_data_query_service import (
     CostDataQueryService,
@@ -25,7 +26,7 @@ def _service() -> CostDataQueryService:
 def _client(principal: ExecutionPrincipal = PRINCIPAL) -> TestClient:
     app = create_app(AppSettings(app_env="test"))
     app.dependency_overrides[get_cost_data_query_service] = _service
-    app.dependency_overrides[get_server_principal] = lambda: principal
+    app.dependency_overrides[get_current_principal] = lambda: principal
     return TestClient(app)
 
 

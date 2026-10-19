@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, update
 
+from app.auth.context import get_current_principal
 from app.db.engine import get_session_factory, reset_engine
 from app.db.models import (
     CostEvent,
@@ -24,7 +25,6 @@ from app.domain.authorization import (
     DataScope,
     ExecutionPrincipal,
     build_execution_context,
-    get_server_principal,
 )
 from app.domain.cost import CALCULATION_RULE_VERSION
 from app.domain.errors import CostProjectionUnavailableError
@@ -241,7 +241,7 @@ def test_postgres_data_admin_api_uses_real_repository(postgres_data_admin):
         roles=("tenant_admin",),
     )
     app = create_app()
-    app.dependency_overrides[get_server_principal] = lambda: principal
+    app.dependency_overrides[get_current_principal] = lambda: principal
     app.dependency_overrides[get_data_admin_service] = lambda: DataAdminService(
         repository
     )

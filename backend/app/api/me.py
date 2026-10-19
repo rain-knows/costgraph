@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
 from app.agent.capabilities import CapabilityId
-from app.domain.authorization import (
-    ExecutionPrincipal,
-    PermissionId,
-    build_execution_context,
-    get_server_principal,
-)
+from app.auth.context import PrincipalDependency
+from app.domain.authorization import PermissionId, build_execution_context
 
 router = APIRouter()
-PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_server_principal)]
 
 
 class MeResponse(BaseModel):
@@ -24,6 +17,7 @@ class MeResponse(BaseModel):
     roles: list[str]
     capabilities: list[CapabilityId]
     permissions: list[PermissionId]
+    data_scope: dict[str, object]
 
 
 @router.get("", response_model=MeResponse)
@@ -34,4 +28,5 @@ def me(principal: PrincipalDependency) -> MeResponse:
         roles=list(principal.roles),
         capabilities=list(context.effective_capabilities),
         permissions=list(context.authorized_permissions),
+        data_scope=context.data_scope.model_dump(mode="json"),
     )

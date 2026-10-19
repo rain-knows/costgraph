@@ -4,7 +4,7 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.domain.authorization import build_execution_context
+from app.domain.authorization import ExecutionPrincipal, build_execution_context
 from app.services.llm_service import (
     generate_cost_analysis_with_llm,
     get_deepseek_model,
@@ -19,7 +19,13 @@ if __name__ == "__main__":
     print(f"parsed={parsed}")
 
     context = build_execution_context(
-        "auto", ["system_help", "cost_calculation", "report_generation"]
+        "auto",
+        ["system_help", "cost_calculation", "report_generation"],
+        principal=ExecutionPrincipal(
+            principal_id="verification-user",
+            tenant_id="verification-tenant",
+            roles=("tenant_admin",),
+        ),
     )
     calculation = CostFixtureRepository().load_finished_batch_projection(
         "FG-A-2026-06", context

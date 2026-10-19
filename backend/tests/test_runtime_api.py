@@ -1,5 +1,7 @@
+from auth_helpers import TEST_PRINCIPAL
 from fastapi.testclient import TestClient
 
+from app.auth.context import get_current_principal
 from app.domain.authorization import ExecutionPrincipal
 from app.main import app
 from app.repositories.run_repository import _semantic_event
@@ -11,11 +13,15 @@ def test_runtime_creation_is_unavailable_when_runtime_is_not_ready(monkeypatch) 
         "app.services.runtime_service.health_snapshot",
         lambda _settings: {"runtime_ready": False},
     )
+    app.dependency_overrides[get_current_principal] = lambda: TEST_PRINCIPAL
     client = TestClient(app)
-    response = client.post(
-        "/api/v2/conversations/conversation-1/runs",
-        json={"message_id": "message-1", "content": "核算产品A"},
-    )
+    try:
+        response = client.post(
+            "/api/v2/conversations/conversation-1/runs",
+            json={"message_id": "message-1", "content": "核算产品A"},
+        )
+    finally:
+        app.dependency_overrides.clear()
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "runtime_unavailable"
 
@@ -30,15 +36,19 @@ def test_runtime_create_uses_shared_request_and_returns_versioned_response(
         return _run_payload()
 
     monkeypatch.setattr("app.api.runtime_runs.create_run", fake_create)
+    app.dependency_overrides[get_current_principal] = lambda: TEST_PRINCIPAL
     client = TestClient(app)
-    response = client.post(
-        "/api/v2/conversations/conversation-1/runs",
-        json={
-            "message_id": "message-1",
-            "content": "核算产品A 2026年6月",
-            "enabled_capabilities": ["cost_calculation"],
-        },
-    )
+    try:
+        response = client.post(
+            "/api/v2/conversations/conversation-1/runs",
+            json={
+                "message_id": "message-1",
+                "content": "核算产品A 2026年6月",
+                "enabled_capabilities": ["cost_calculation"],
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
     assert response.status_code == 202
     body = response.json()
     assert body["schema_version"] == "2.0"
@@ -69,7 +79,11 @@ def test_runtime_event_stream_uses_semantic_event_type(monkeypatch) -> None:
         ),
     )
     client = TestClient(app)
-    response = client.get("/api/v2/conversations/conversation-1/runs/run-1/events")
+    app.dependency_overrides[get_current_principal] = lambda: TEST_PRINCIPAL
+    try:
+        response = client.get("/api/v2/conversations/conversation-1/runs/run-1/events")
+    finally:
+        app.dependency_overrides.clear()
     assert response.status_code == 200
     assert "id: 7" in response.text
     assert "event: tool" in response.text

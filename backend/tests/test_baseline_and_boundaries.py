@@ -11,7 +11,7 @@ from app.repositories.data_admin_repository import get_data_admin_repository
 BACKEND = Path(__file__).resolve().parents[1]
 BASELINE_FILE = "20260907_0001_costgraph_baseline.py"
 #: 最新迁移 head（二期批次 1 增量迁移）；允许在 baseline 之上叠加。
-EXPECTED_HEAD = "20260917_0002"
+EXPECTED_HEAD = "20260918_0003"
 
 
 def _migration_heads() -> list[str]:
@@ -69,6 +69,8 @@ def test_baseline_exists_and_migration_head_matches_runtime_table_set() -> None:
         "cost_data.cost_event_inputs",
         "cost_data.cost_records",
         "cost_data.finished_batch_cost_projections",
+        "cost_data.iam_principal_roles",
+        "cost_data.iam_data_scopes",
     }
 
 
@@ -94,6 +96,10 @@ def test_production_app_exposes_only_canonical_api_paths() -> None:
         "/api/data-admin/imports/{job_id}/errors",
         "/api/data-admin/published",
         "/api/data-admin/quality",
+        "/api/audit/events",
+        "/api/iam/principals",
+        "/api/iam/principals/{principal_id}/roles",
+        "/api/iam/principals/{principal_id}/scope",
         "/api/me",
         "/api/health",
         "/api/livez",

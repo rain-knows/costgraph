@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.domain.authorization import ExecutionPrincipal, get_server_principal
+from app.domain.authorization import ExecutionPrincipal
 from app.repositories.artifact_repository import get_artifact_repository
 
 PUBLIC_ARTIFACT_FIELDS = (
@@ -29,6 +29,7 @@ PUBLIC_ARTIFACT_FIELDS = (
 
 
 def list_artifacts(
+    principal: ExecutionPrincipal,
     *,
     state: str = "active",
     query: str | None = None,
@@ -36,11 +37,9 @@ def list_artifacts(
     run_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    principal: ExecutionPrincipal | None = None,
 ) -> dict[str, Any]:
-    owner = principal or get_server_principal()
     items, total = get_artifact_repository().list(
-        owner,
+        principal,
         state=state,
         query=query,
         period=period,
@@ -58,29 +57,26 @@ def list_artifacts(
 
 def get_artifact(
     artifact_id: str,
-    principal: ExecutionPrincipal | None = None,
+    principal: ExecutionPrincipal,
 ) -> dict[str, Any]:
-    owner = principal or get_server_principal()
     return _public_artifact(
-        get_artifact_repository().get(artifact_id, owner),
+        get_artifact_repository().get(artifact_id, principal),
         include_report=True,
     )
 
 
 def trash_artifact(
     artifact_id: str,
-    principal: ExecutionPrincipal | None = None,
+    principal: ExecutionPrincipal,
 ) -> None:
-    owner = principal or get_server_principal()
-    get_artifact_repository().trash(artifact_id, owner)
+    get_artifact_repository().trash(artifact_id, principal)
 
 
 def restore_artifact(
     artifact_id: str,
-    principal: ExecutionPrincipal | None = None,
+    principal: ExecutionPrincipal,
 ) -> dict[str, Any]:
-    owner = principal or get_server_principal()
-    return _public_artifact(get_artifact_repository().restore(artifact_id, owner))
+    return _public_artifact(get_artifact_repository().restore(artifact_id, principal))
 
 
 def _public_artifact(
