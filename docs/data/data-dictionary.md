@@ -224,7 +224,16 @@ Pydantic 契约校验的批次摘要与追溯图，`rule_version` 必须等于�
 
 应用连接使用受限角色 `costgraph_app`；表所有者不受策略约束，因此迁移和受控运维连接仍可维护
 全库。租户上下文由 `backend/app/db/tenant.py` 的 `set_tenant()` 写入，`release_session()`
-在回滚后清空该设置再关闭连接，防止连接池复用把租户上下文带到下一个请求。
+在回滚后清空该设置再关闭连接，防止连接池复用把租户上下文带到下一个请求。租户用会话级
+`set_config(..., false)` 写入，`rollback()` 不会清除它，因此 RESET 失败时必须 `invalidate()`
+作废物理连接；把仍带旧租户的连接还回池会让下一个请求串租户。
+
+策略是 `ENABLE` 而非 `FORCE`，所以 **API 必须以 `costgraph_app` 连接才受约束**；以表所有者
+连接时 19 张表的策略一条都不生效，只剩 Repository 一层。Worker 按设计使用所有者连接跨租户
+领取调度行，只靠 Repository `WHERE` 与领取后注入的 `tenant_id` 隔离。
+
+验证状态：这 4 张表的推导策略与直接比较策略的 4 个用例（`backend/tests/test_rls_postgres.py`）
+需要 `TEST_COST_DATABASE_URL`，未配置时全部跳过；当前尚无真实数据库上的拦截证据。
 
 ## 关系
 

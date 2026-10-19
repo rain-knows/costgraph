@@ -56,12 +56,18 @@ def privileged_session(
 
 
 def release_session(session: Session) -> None:
-    """回滚未提交的改动、清空租户上下文再关闭，避免连接复用串租户。"""
+    """回滚未提交的改动、清空租户上下文再关闭，避免连接复用串租户。
+
+    租户用会话级 ``set_config(..., false)`` 写入，``rollback()`` 不会清除它，
+    因此必须显式 RESET。RESET 失败时只记日志并把连接交回连接池，会让下一个
+    请求复用一条仍带旧租户的物理连接，所以失败分支要作废连接而不只是告警。
+    """
     try:
         session.rollback()
         session.execute(text(_RESET_SQL))
     except Exception:  # 清理失败不应掩盖业务异常
-        logger.warning("清空租户上下文失败，连接将随 session 关闭而废弃", exc_info=True)
+        logger.warning("清空租户上下文失败，作废该连接", exc_info=True)
+        session.invalidate()
     finally:
         session.close()
 

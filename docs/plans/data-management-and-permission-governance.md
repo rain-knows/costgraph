@@ -79,32 +79,61 @@ Authorization: Bearer
 - 测试：`backend/tests/test_oidc_and_iam.py` 覆盖签名、issuer、audience、过期、错误 claim、
   缺失令牌、角色矩阵与审计写入；全量 `pytest` 共 247 passed / 8 skipped。
 
-## 二期批次 2B（已完成，当前能力）：数据库 RLS 租户隔离
+## 二期批次 2B（已实现，尚未在真实数据库验证）：数据库 RLS 租户隔离
 
 交付提交点 `feat(security): 租户级行级安全与应用角色隔离`。
 
-已交付事实（可回指迁移、代码与测试）：
+已实现事实（可回指迁移与代码）：
 
-- 迁移 `backend/alembic/versions/20260920_0004_rls_tenant_isolation.py` 为数据表启用租户策略
-  `USING (tenant_id = current_setting('app.tenant_id', true))`，未设置 `app.tenant_id` 时策略
-  返回 0 行（fail-closed）；策略用 `ENABLE` 而非 `FORCE`，表所有者不受约束。
+- 迁移 `backend/alembic/versions/20260920_0004_rls_tenant_isolation.py` 为带 `tenant_id` 的表启用
+  租户策略 `USING (tenant_id = current_setting('app.tenant_id', true))`，未设置 `app.tenant_id`
+  时策略返回 0 行（fail-closed）；策略用 `ENABLE` 而非 `FORCE`，表所有者不受约束。
 - 只有调度表（`cost_data.data_import_jobs`、`agent_runtime.agent_runs`）允许
-  `costgraph_worker` 角色跨租户读取待领取工作；子表 `messages`/`agent_run_events` 经父表
-  判租户；`agent_workers` 与 checkpoint 系列表不加策略。
+  `costgraph_worker` 角色跨租户读取待领取工作；子表 `messages`/`agent_run_events`/
+  `audit_traces`/`agent_workers` 无 `tenant_id`，经父表判租户。
 - `backend/app/db/tenant.py`：`set_tenant()`/`release_session()` 按请求设置并清理会话级
-  `app.tenant_id`。会话依赖在 FastAPI 同步依赖的拷贝上下文中执行，因此以会话对象本身
-  传递租户，不用 ContextVar。
+  `app.tenant_id`；RESET 失败时作废物理连接，不把仍带旧租户的连接还回连接池。
+  会话依赖在 FastAPI 同步依赖的拷贝上下文中执行，因此以会话对象本身传递租户，不用 ContextVar。
 - Worker 领取任务后用被领取行的 `tenant_id` 注入会话，Worker 角色不会变成跨租户后门。
-- `backend/app/db/engine.py` 暴露 `get_session_factory()`/`reset_engine()`；应用角色连接串
-  单独配置。
-- 测试 `backend/tests/test_rls_postgres.py` 以受限角色 `costgraph_app` 连接真实
-  PostgreSQL，验证越权读写被策略拦截；未配置 `TEST_COST_DATABASE_URL` 时跳过。
 
-## 二期批次 2C（进行中）：前端治理工作区
+**验证状态：未在真实 PostgreSQL 上执行。** 以下用例已编写但当前全部 skip：
 
-- OIDC Authorization Code + PKCE，访问令牌只存内存；
-- 导入任务提交向导、任务详情、IAM 与审计页面；
-- 按 `permissions` 控制导航与直接访问，无权限不得伪装为空数据。
+- `backend/tests/test_rls_postgres.py` 的 4 个用例（本租户过滤、未设租户返回 0 行、跨租户写入被拒、
+  子表经父表继承租户）以受限角色 `costgraph_app` 连接真实库；
+- `test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、
+  `test_governance_audit_postgres.py`（2）同样因未配置 `TEST_COST_DATABASE_URL` 而 skip。
+
+跳过原因是 `TEST_COST_DATABASE_URL` 未配置。策略的 fail-closed 行为目前只有代码与迁移依据，
+**没有运行证据**。在配置可写的 `TEST_COST_DATABASE_URL` 并跑出 `0 skipped` 之前，不得把 RLS
+描述为已验证。恢复验证的步骤见 [运行手册](../operations/runbook.md)。
+
+## 二期批次 2C（已完成，前端能力）：前端治理工作区
+
+交付提交点 `feat(governance): 前端治理工作区与权限分治页面`。
+
+- 页面：`ImportJobsPage`（列表）、`GovernanceSubmitPage`（提交向导）、
+  `ImportJobDetailPage`（校验错误分页、审批/拒绕、取消、发布状态）、`IamPage`、`AuditPage`。
+- 路由权限在 `frontend/src/auth/permissions.ts` 按最长前缀匹配；`/data-admin/imports/new`
+  需 `data_import.submit`，覆盖 `/data-admin` 的 `data_management.read`。
+- 任务详情动作由服务端 `status` 与主体权限共同决定；`publish_failed` 不提供伪造的手动重试接口。
+- 前端测试 92 passed（含新增 7 个测试文件）；`npm run build` 与 `npm run test:bundle` 通过，
+  初始 JS 210.5 KiB（门禁 500 KiB）。
+
+**未验证：浏览器级验收**（明暗主题、窄屏布局、键盘可达）只有 jsdom 用例覆盖，
+未在真实 Chromium 中执行。
 
 计划内容只写入 `docs/plans/`，不得作为已实现依据引用。批次 2B/2C 的当前能力以
 [存储](../data/storage.md)、[运行手册](../operations/runbook.md) 与代码为准。
+
+## 未关闭的验证项
+
+以下验证项已具备代码与测试用例，但尚未取得运行证据，交付时不得声称已验证：
+
+1. 真实 PostgreSQL 上的 RLS 实际拦截（`test_rls_postgres.py`，4 个用例 skip）；
+2. 真实 PostgreSQL 上的数据治理、durable 与审计不可变验证（共 8 个用例 skip）；
+3. 浏览器级前端验收：明暗主题、窄屏布局、键盘可达；
+4. 真实 OIDC IdP 对接（当前用例使用本地 RSA 与静态 JWKS）；
+5. 真实 DeepSeek 入口调用。
+
+清除第 1、2 项的唯一路径是配置可写的 `TEST_COST_DATABASE_URL` 后跑出 `0 skipped`，
+步骤见 [运行手册](../operations/runbook.md)。

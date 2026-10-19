@@ -16,6 +16,38 @@ OIDC_AUDIENCE=costgraph
 OIDC_JWKS_URI=https://idp.example.com/.well-known/jwks.json
 ```
 
+### RLS 的连接角色分工（必须对）
+
+`20260920_0004` 的策略是 `ENABLE` 而非 `FORCE`，**表所有者和超级用户一律绕过策略**。
+因此两个连接必须分开，否则 RLS 在生产只是空转：
+
+| 连接 | 角色 | RLS 行为 | 隔离依赖 |
+| --- | --- | --- | --- |
+| API | `costgraph_app`（需 `LOGIN` + 凭据） | 受策略约束；未设 `app.tenant_id` 返回 0 行 | 策略 + Repository `WHERE` |
+| Worker / Alembic | 表所有者或 `BYPASSRLS` 角色 | 不受策略约束 | **仅** Repository `WHERE` + 领取后注入的 `tenant_id` |
+
+迁移创建的是 `CREATE ROLE costgraph_app NOLOGIN`，部署时必须授予 `LOGIN` 与凭据，并把 API 的
+`COST_DATABASE_URL` 指向该角色；Worker 继续用所有者连接（它需要跨租户领取 `data_import_jobs`
+与 `agent_runs` 调度行）。Worker 这条路是**明确放弃 RLS 层、只保留仓储层**，不要把它当作
+受策略保护。以所有者连接跑 API 时 19 张表的策略一条都不生效，属于配置错误。
+
+### 恢复 RLS 验证
+
+RLS 的 4 个用例（`backend/tests/test_rls_postgres.py`）与另外 8 个 PostgreSQL 用例需要
+`TEST_COST_DATABASE_URL`，未配置时整个文件跳过。要清除这些 skip：
+
+```powershell
+cd D:\work\costgraph
+$env:PYTHONPATH="D:\work\costgraph\backend"
+$env:TEST_COST_DATABASE_URL="postgresql+psycopg://owner:password@127.0.0.1:5432/costgraph_test"
+backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini upgrade head
+backend\.venv\Scripts\python.exe -m pytest backend\tests -q -rs
+```
+
+目标为 `0 skipped`。目标库必须可写且**不要**指向共享开发库：`upgrade head` 会创建
+`costgraph_app` 角色并给表加策略，属于改变环境的操作。在 `0 skipped` 之前，文档不得把
+RLS 描述为已验证。
+
 `OIDC_TENANT_CLAIM`（默认 `tenant_id`）、`OIDC_ROLES_CLAIM`（默认 `roles`）、
 `OIDC_JWKS_CACHE_SECONDS`（默认 600）与 `OIDC_LEEWAY_SECONDS`（默认 30）可按身份提供方调整。
 
