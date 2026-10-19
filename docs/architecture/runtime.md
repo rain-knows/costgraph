@@ -45,6 +45,16 @@ agent run（既有路径，未被导入任务重构），一条处理数据导�
 导入任务状态机的合法迁移、幂等与快照不可变性见[治理与质量](../data/governance.md)；
 接口契约见[数据治理契约](../api/data-admin-contract.md)。
 
+### 租户上下文注入
+
+两条领取路径（Run 与导入任务）都在领取后先以任务/运行行上的 `tenant_id` 调用
+`backend/app/db/tenant.py` 的 `set_tenant()` 写入 `app.tenant_id`，再执行任何业务查询；
+完成或异常退出时通过 `release_session()` 回滚、清空该设置并关闭连接。Worker 不重新解析客户端
+身份，也不从环境变量推导租户：租户和主体全部来自已固化的 Run / Import Job 行。
+
+ContextVar 不能用于这条链路：FastAPI 同步依赖运行在线程池的上下文拷贝中，依赖里写入的值
+无法回传到 endpoint 与 Repository，只剩仓储里无人读取的副本。
+
 ## 生命周期与协议
 
 公开持久化协议固定为 `2.0`，Run 状态机为：
@@ -87,4 +97,7 @@ Runtime 只记录这些调用的元数据与结果状态，不在生命周期层
 
 `/api/livez` 只表示 API 进程可响应；`/api/readyz` 与 `runtime_ready` 同时检查数据库、Alembic head 和 Worker 心跳，不调用付费模型。前端在 Runtime 不可用时禁止提交，不切换到另一套协议或本地执行。
 
-依据：`backend/app/agent/runtime.py`、`backend/app/agent/runtime_services.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/run_repository.py`、`backend/app/worker.py`、`backend/app/services/import_job_service.py`、`backend/app/repositories/postgres_import_job_repository.py`。
+就绪检查要求数据库 revision 等于代码 head；当前 head 为 `20260920_0004`（租户级行级安全）。
+未升级到该 revision 的库会在 `/api/readyz` 报告 `alembic` 检查失败。
+
+依据：`backend/app/agent/runtime.py`、`backend/app/agent/runtime_services.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/run_repository.py`、`backend/app/worker.py`、`backend/app/services/import_job_service.py`、`backend/app/repositories/postgres_import_job_repository.py`、`backend/app/db/tenant.py`。

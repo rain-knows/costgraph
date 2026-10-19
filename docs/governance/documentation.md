@@ -9,16 +9,16 @@
 ## 迁移策略
 
 仓库以 `backend/alembic/versions/20260907_0001_costgraph_baseline.py` 为迁移图根节点，
-允许在它之上叠加增量迁移（当前 head `20260917_0002`）。结构变更只能通过 Alembic：
+允许在它之上叠加增量迁移（当前 head `20260920_0004`）。结构变更只能通过 Alembic：
 新表、新列、新索引和键变更均需新增增量迁移，并用显式 `op.` DDL；禁止运行时建表、
 `Base.metadata.create_all`、`autogenerate` 或在迁移中导入运行时模型。
 `scripts/check_docs_sync.ps1` 断言 baseline 存在且 `down_revision = None`，不再限制迁移文件数量；
 `backend/tests/test_baseline_and_boundaries.py` 额外断言迁移图只有一个 head，且等于运行时模型预期的 head。
 删除实现时必须同时删除对应迁移之后的失效文档与断言，不留兼容层。
 
-计划与事实的边界同样适用于批次：二期批次 1 已交付的导入任务闭环写入当前事实文档，
-批次 2（OIDC/IAM/RLS）与批次 3（前端/审计页面）只写入 `docs/plans/` 与
-[IAM 契约](../api/iam-contract.md) 骨架，不得写成已实现事实。
+计划与事实的边界同样适用于批次：二期批次 1（导入任务闭环）与批次 2（OIDC/IAM/RLS）
+已交付的部分写入当前事实文档；批次 3（前端治理工作区与审计页面）尚未交付，只写入
+`docs/plans/` 与 [IAM 契约](../api/iam-contract.md) 的未实现说明，不得写成已实现事实。
 
 ## 变更映射
 
@@ -35,6 +35,7 @@
 | Tool/Provider 注册、Schema、重试 | `architecture/tool-provider.md` |
 | Event、Trace、Replay、Eval、脱敏 | `architecture/event-trace-replay.md` |
 | Repository、数据库连接、存储生命周期 | `data/storage.md`、`architecture/data-flow.md` |
+| 行级安全策略、受限角色、租户上下文注入 | `data/storage.md`、`data/data-dictionary.md`、`architecture/runtime.md` |
 | SQLAlchemy 模型、schema、迁移、索引 | `data/data-dictionary.md`、`data/cost-accounting-format.md`（成本事实格式和费用代码） |
 | 不可变快照键、被删除的旧唯一约束 | `data/data-dictionary.md`、`data/governance.md` |
 | 导入校验、发布、隔离、保留 | `data/governance.md`、`data/cost-accounting-format.md`（卷积、舍入和三视图规则） |

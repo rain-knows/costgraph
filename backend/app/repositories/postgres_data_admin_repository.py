@@ -6,7 +6,7 @@ from pathlib import PurePath, PureWindowsPath
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_session_factory
@@ -20,6 +20,7 @@ from app.db.models import (
     FinishedBatchCostProjection,
     Part,
 )
+from app.db.tenant import scoped_session
 from app.domain.authorization import ExecutionContext
 from app.domain.cost import CALCULATION_RULE_VERSION
 from app.domain.errors import CostProjectionUnavailableError
@@ -31,14 +32,13 @@ class PostgresDataAdminRepository:
         self._session_factory = session_factory or get_session_factory()
 
     @contextmanager
-    def _session(self) -> Iterator[Session]:
-        session = self._session_factory()
-        try:
-            timeout_ms = max(1, int(get_settings().agent_tool_timeout_seconds * 1000))
-            session.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
+    def _session(self, tenant_id: str) -> Iterator[Session]:
+        with scoped_session(
+            self._session_factory,
+            tenant_id,
+            statement_timeout_ms=int(get_settings().agent_tool_timeout_seconds * 1000),
+        ) as session:
             yield session
-        finally:
-            session.close()
 
     def list_batches(
         self,
@@ -52,7 +52,7 @@ class PostgresDataAdminRepository:
         filters = [DataLoadBatch.tenant_id == owner.tenant_id]
         if status:
             filters.append(DataLoadBatch.status == status)
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             total = (
                 session.scalar(
                     select(func.count()).select_from(DataLoadBatch).where(*filters)
@@ -79,7 +79,7 @@ class PostgresDataAdminRepository:
         self, context: ExecutionContext, batch_id: UUID
     ) -> dict[str, Any] | None:
         owner = context.principal
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             batch = session.scalar(
                 select(DataLoadBatch).where(
                     DataLoadBatch.tenant_id == owner.tenant_id,
@@ -115,7 +115,7 @@ class PostgresDataAdminRepository:
             DataLoadBatch.tenant_id == owner.tenant_id,
             DataLoadBatch.batch_id == batch_id,
         )
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             exists = session.scalar(select(DataLoadBatch.batch_id).where(*batch_filter))
             if exists is None:
                 return None
@@ -153,7 +153,7 @@ class PostgresDataAdminRepository:
 
     def get_published_snapshot(self, context: ExecutionContext) -> dict[str, Any]:
         owner = context.principal
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             batch = session.scalar(
                 select(DataLoadBatch)
                 .where(

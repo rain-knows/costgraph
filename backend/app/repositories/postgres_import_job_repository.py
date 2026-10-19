@@ -21,7 +21,7 @@ from pathlib import PurePath, PureWindowsPath
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,7 @@ from app.db.models import (
     DataLoadError,
     GovernanceAuditEvent,
 )
+from app.db.tenant import privileged_session, scoped_session
 from app.domain.authorization import ExecutionContext
 from app.repositories.import_job_repository import (
     CLAIM_TARGET_STATUS,
@@ -89,14 +90,21 @@ class PostgresImportJobRepository:
         self._session_factory = session_factory or get_session_factory()
 
     @contextmanager
-    def _session(self) -> Iterator[Session]:
-        session = self._session_factory()
-        try:
-            timeout_ms = max(1, int(get_settings().agent_tool_timeout_seconds * 1000))
-            session.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
+    def _session(self, tenant_id: str) -> Iterator[Session]:
+        with scoped_session(
+            self._session_factory,
+            tenant_id,
+            statement_timeout_ms=int(get_settings().agent_tool_timeout_seconds * 1000),
+        ) as session:
             yield session
-        finally:
-            session.close()
+
+    @contextmanager
+    def _worker_session(self) -> Iterator[Session]:
+        with privileged_session(
+            self._session_factory,
+            statement_timeout_ms=int(get_settings().agent_tool_timeout_seconds * 1000),
+        ) as session:
+            yield session
 
     # ---------------------------------------------------------------- create
 
@@ -116,7 +124,7 @@ class PostgresImportJobRepository:
         total_rows: int,
     ) -> dict[str, Any]:
         now = utc_now()
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             existing = self._find_duplicate(
                 session,
                 tenant_id=tenant_id,
@@ -225,7 +233,7 @@ class PostgresImportJobRepository:
             filters.append(DataImportJob.status.in_(ACTIVE_JOB_STATUSES))
         elif status:
             filters.append(DataImportJob.status == status)
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             total = (
                 session.scalar(
                     select(func.count()).select_from(DataImportJob).where(*filters)
@@ -243,7 +251,7 @@ class PostgresImportJobRepository:
 
     def get_job(self, context: ExecutionContext, job_id: UUID) -> dict[str, Any] | None:
         tenant_id = context.principal.tenant_id
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             row = session.scalar(
                 select(DataImportJob).where(
                     DataImportJob.tenant_id == tenant_id,
@@ -272,7 +280,7 @@ class PostgresImportJobRepository:
         self, context: ExecutionContext, job_id: UUID, *, page: int, page_size: int
     ) -> tuple[list[dict[str, Any]], int] | None:
         tenant_id = context.principal.tenant_id
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             exists = session.scalar(
                 select(DataImportJob.job_id).where(
                     DataImportJob.tenant_id == tenant_id,
@@ -328,7 +336,7 @@ class PostgresImportJobRepository:
         if target is None:
             raise ValueError(f"未知审批决策：{decision}")
         tenant_id = context.principal.tenant_id
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             row = self._locked_job(session, tenant_id=tenant_id, job_id=job_id)
             validate_job_transition(row.status, target)
             now = utc_now()
@@ -346,7 +354,7 @@ class PostgresImportJobRepository:
         self, context: ExecutionContext, job_id: UUID, *, actor_principal_id: str
     ) -> dict[str, Any]:
         tenant_id = context.principal.tenant_id
-        with self._session() as session:
+        with self._session(context.principal.tenant_id) as session:
             row = self._locked_job(session, tenant_id=tenant_id, job_id=job_id)
             validate_job_transition(row.status, "cancelled")
             now = utc_now()
@@ -397,7 +405,7 @@ class PostgresImportJobRepository:
             .with_for_update(skip_locked=True)
             .limit(1)
         )
-        with self._session() as session:
+        with self._worker_session() as session:
             row = session.scalar(statement)
             if row is None:
                 session.rollback()
@@ -419,7 +427,7 @@ class PostgresImportJobRepository:
 
     def renew_job_lease(self, job_id: UUID, worker_id: str) -> bool:
         now = utc_now()
-        with self._session() as session:
+        with self._worker_session() as session:
             result = session.execute(
                 update(DataImportJob)
                 .where(
@@ -437,7 +445,7 @@ class PostgresImportJobRepository:
     def complete_validation(self, job_id: UUID, worker_id: str, *, outcome: Any) -> str:
         fields = _validation_fields(outcome)
         target = "approval_pending" if fields["valid"] else "validation_failed"
-        with self._session() as session:
+        with self._worker_session() as session:
             row = self._leased_job(
                 session, job_id=job_id, worker_id=worker_id, expected="validating"
             )
@@ -481,7 +489,7 @@ class PostgresImportJobRepository:
     def complete_publish(
         self, job_id: UUID, worker_id: str, *, published_batch_id: UUID
     ) -> str:
-        with self._session() as session:
+        with self._worker_session() as session:
             row = self._leased_job(
                 session, job_id=job_id, worker_id=worker_id, expected="publishing"
             )
@@ -498,7 +506,7 @@ class PostgresImportJobRepository:
     def fail_job(
         self, job_id: UUID, worker_id: str, *, retryable: bool, error_code: str
     ) -> str:
-        with self._session() as session:
+        with self._worker_session() as session:
             row = self._leased_job(session, job_id=job_id, worker_id=worker_id)
             current = row.status
             if current not in WORKING_JOB_STATUSES:
@@ -602,7 +610,7 @@ class PostgresImportJobRepository:
         request_id: str | None = None,
         detail: Mapping[str, Any] | None = None,
     ) -> None:
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             session.execute(
                 GovernanceAuditEvent.__table__.insert(),
                 [

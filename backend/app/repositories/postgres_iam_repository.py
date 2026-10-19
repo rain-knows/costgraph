@@ -5,12 +5,13 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_session_factory
 from app.db.models import GovernanceAuditEvent, IamDataScope, IamPrincipalRole
+from app.db.tenant import scoped_session
 from app.settings import get_settings
 
 
@@ -21,19 +22,18 @@ class PostgresIamRepository:
         self._session_factory = session_factory or get_session_factory()
 
     @contextmanager
-    def _session(self) -> Iterator[Session]:
-        session = self._session_factory()
-        try:
-            timeout_ms = max(1, int(get_settings().agent_tool_timeout_seconds * 1000))
-            session.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
+    def _session(self, tenant_id: str) -> Iterator[Session]:
+        with scoped_session(
+            self._session_factory,
+            tenant_id,
+            statement_timeout_ms=int(get_settings().agent_tool_timeout_seconds * 1000),
+        ) as session:
             yield session
-        finally:
-            session.close()
 
     def get_membership(
         self, tenant_id: str, principal_id: str
     ) -> dict[str, Any] | None:
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             row = session.scalar(
                 select(IamPrincipalRole).where(
                     IamPrincipalRole.tenant_id == tenant_id,
@@ -55,7 +55,7 @@ class PostgresIamRepository:
         self, tenant_id: str, *, limit: int, offset: int
     ) -> tuple[list[dict[str, Any]], int]:
         filters = (IamPrincipalRole.tenant_id == tenant_id,)
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             total = (
                 session.scalar(
                     select(func.count()).select_from(IamPrincipalRole).where(*filters)
@@ -120,14 +120,14 @@ class PostgresIamRepository:
                 },
             )
         )
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             session.execute(statement)
             session.commit()
 
     def get_data_scope(
         self, tenant_id: str, principal_id: str
     ) -> dict[str, Any] | None:
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             row = session.scalar(
                 select(IamDataScope).where(
                     IamDataScope.tenant_id == tenant_id,
@@ -170,7 +170,7 @@ class PostgresIamRepository:
                 },
             )
         )
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             session.execute(statement)
             session.commit()
 
@@ -188,7 +188,7 @@ class PostgresIamRepository:
             filters.append(GovernanceAuditEvent.actor_principal_id == subject_id)
         if action:
             filters.append(GovernanceAuditEvent.action == action)
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             total = (
                 session.scalar(
                     select(func.count())
@@ -222,7 +222,7 @@ class PostgresIamRepository:
         detail: dict[str, Any],
     ) -> None:
         """追加一条治理审计事件；表上的触发器拒绝任何后续修改。"""
-        with self._session() as session:
+        with self._session(tenant_id) as session:
             session.execute(
                 GovernanceAuditEvent.__table__.insert().values(
                     tenant_id=tenant_id,

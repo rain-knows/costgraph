@@ -16,6 +16,7 @@ from app.db.models import (
     RuntimeConversation,
     RuntimeMessage,
 )
+from app.db.tenant import scoped_session
 from app.domain.authorization import ExecutionPrincipal
 from app.domain.conversation import empty_conversation_context
 from app.domain.errors import (
@@ -36,12 +37,9 @@ class PostgresConversationRepository:
         self._session_factory = session_factory or get_session_factory()
 
     @contextmanager
-    def _session(self) -> Iterator[Session]:
-        session: Session = self._session_factory()
-        try:
+    def _session(self, tenant_id: str) -> Iterator[Session]:
+        with scoped_session(self._session_factory, tenant_id) as session:
             yield session
-        finally:
-            session.close()
 
     def create_conversation(
         self,
@@ -59,7 +57,7 @@ class PostgresConversationRepository:
             if enabled_capabilities is not None
             else ["system_help", "cost_calculation", "report_generation"]
         )
-        with self._session() as session:
+        with self._session(principal.tenant_id) as session:
             session.add(
                 RuntimeConversation(
                     conversation_id=conversation_id,
@@ -78,7 +76,7 @@ class PostgresConversationRepository:
 
     def list_conversations(self, principal: ExecutionPrincipal) -> list[dict[str, Any]]:
         owner = principal
-        with self._session() as session:
+        with self._session(principal.tenant_id) as session:
             message_count = (
                 select(func.count(RuntimeMessage.message_id))
                 .where(
@@ -111,7 +109,7 @@ class PostgresConversationRepository:
         normalized_title = title.strip()
         if not normalized_title:
             raise ValueError("会话标题不能为空")
-        with self._session() as session:
+        with self._session(principal.tenant_id) as session:
             result = session.execute(
                 update(RuntimeConversation)
                 .where(
@@ -132,7 +130,7 @@ class PostgresConversationRepository:
         principal: ExecutionPrincipal,
     ) -> None:
         owner = principal
-        with self._session() as session:
+        with self._session(principal.tenant_id) as session:
             conversation = self._owned_conversation(
                 session, conversation_id, owner, for_update=True
             )
@@ -175,7 +173,7 @@ class PostgresConversationRepository:
         principal: ExecutionPrincipal,
     ) -> dict[str, Any]:
         owner = principal
-        with self._session() as session:
+        with self._session(principal.tenant_id) as session:
             conversation = self._owned_conversation(session, conversation_id, owner)
             if conversation is None:
                 raise ConversationNotFoundError(conversation_id)
@@ -227,7 +225,7 @@ class PostgresConversationRepository:
     ) -> dict[str, Any]:
         owner = principal
         role_order = case((RuntimeMessage.role == "user", 0), else_=1)
-        with self._session() as session:
+        with self._session(principal.tenant_id) as session:
             if self._owned_conversation(session, conversation_id, owner) is None:
                 raise ConversationNotFoundError(conversation_id)
 

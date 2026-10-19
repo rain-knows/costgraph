@@ -205,6 +205,27 @@ Pydantic 契约校验的批次摘要与追溯图，`rule_version` 必须等于�
 导入载荷本身不在关系表：它写入本地内容寻址对象存储，数据库只保留
 `source_object_key`/`source_object_size`/`source_object_sha256`。
 
+## 租户隔离与行级安全
+
+所有业务表都必须带 `tenant_id`，并同时受两层约束：Repository 的显式 `WHERE tenant_id = ...`
+和数据库 RLS 策略。`20260920_0004` 为 `cost_data`、`agent_output`、`agent_runtime` 的 19 张业务表
+启用 RLS，其中 15 张直接比较自身的 `tenant_id`，另外 4 张经父表推导：
+
+| 表 | 租户推导路径 |
+| --- | --- |
+| `agent_runtime.messages` | `conversations.conversation_id` |
+| `agent_runtime.agent_run_events` | `agent_runs.run_id` |
+| `agent_runtime.audit_traces` | `agent_runs.run_id` |
+| `agent_runtime.agent_workers` | `agent_runs.run_id`，经 `agent_workers.current_run_id` |
+
+策略谓词统一为 `tenant_id = current_setting('app.tenant_id', true)`。未设置该参数时比较结果
+为 NULL，查询返回空集，失败方向是收敛而不是放开。`agent_checkpoint.*` 由 LangGraph 维护，
+没有租户概念，只经已鉴权的 run 记录访问，不在策略范围内。
+
+应用连接使用受限角色 `costgraph_app`；表所有者不受策略约束，因此迁移和受控运维连接仍可维护
+全库。租户上下文由 `backend/app/db/tenant.py` 的 `set_tenant()` 写入，`release_session()`
+在回滚后清空该设置再关闭连接，防止连接池复用把租户上下文带到下一个请求。
+
 ## 关系
 
 ```text
@@ -225,8 +246,8 @@ artifacts --business IDs--> runtime records (no cross-schema FK)
 
 - 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
   sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
-- \GET /api/me\ 返回的 \permissions\ 决定导航可见性与路由可访问性；\/api/me\ 不返回 \	enant_id\。
+- `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
-  三者不得退化成\"空数据\"。
-- 配置项为 \VITE_OIDC_ISSUER\、\VITE_OIDC_CLIENT_ID\、\VITE_OIDC_REDIRECT_URI\、\VITE_OIDC_SCOPE\，
-  见 \rontend/.env.example\。
+  三者不得退化成"空数据"。
+- 配置项为 `VITE_OIDC_ISSUER`、`VITE_OIDC_CLIENT_ID`、`VITE_OIDC_REDIRECT_URI`、`VITE_OIDC_SCOPE`，
+  见 `frontend/.env.example`。

@@ -118,8 +118,8 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 
 - 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
   sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
-- \GET /api/me\ 返回的 \permissions\ 决定导航可见性与路由可访问性；\/api/me\ 不返回 \	enant_id\。
+- `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
-  三者不得退化成\"空数据\"。
-- 配置项为 \VITE_OIDC_ISSUER\、\VITE_OIDC_CLIENT_ID\、\VITE_OIDC_REDIRECT_URI\、\VITE_OIDC_SCOPE\，
-  见 \rontend/.env.example\。
+  三者不得退化成"空数据"。
+- 配置项为 `VITE_OIDC_ISSUER`、`VITE_OIDC_CLIENT_ID`、`VITE_OIDC_REDIRECT_URI`、`VITE_OIDC_SCOPE`，
+  见 `frontend/.env.example`。

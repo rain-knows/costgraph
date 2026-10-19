@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, load_only
 
 from app.db.engine import get_session_factory
 from app.db.models import AgentArtifact
+from app.db.tenant import release_session, set_tenant
 from app.domain.authorization import ExecutionPrincipal
 from app.domain.errors import (
     ArtifactConflictError,
@@ -29,6 +30,7 @@ class PostgresArtifactRepository:
         self._require_owner(record, principal)
         values = {**record, "created_at": datetime.fromisoformat(record["created_at"])}
         session: Session = self._session_factory()
+        set_tenant(session, principal.tenant_id)
         try:
             session.execute(
                 pg_insert(AgentArtifact).values(**values).on_conflict_do_nothing()
@@ -54,7 +56,7 @@ class PostgresArtifactRepository:
             session.rollback()
             raise ArtifactPersistenceError() from exc
         finally:
-            session.close()
+            release_session(session)
 
     def list(
         self,
@@ -92,6 +94,7 @@ class PostgresArtifactRepository:
             filters.append(AgentArtifact.run_id == run_id)
 
         session: Session = self._session_factory()
+        set_tenant(session, principal.tenant_id)
         try:
             statement = (
                 select(AgentArtifact, func.count().over().label("total_count"))
@@ -139,10 +142,11 @@ class PostgresArtifactRepository:
         except SQLAlchemyError as exc:
             raise ArtifactPersistenceError() from exc
         finally:
-            session.close()
+            release_session(session)
 
     def get(self, artifact_id: str, principal: ExecutionPrincipal) -> dict[str, Any]:
         session: Session = self._session_factory()
+        set_tenant(session, principal.tenant_id)
         try:
             row = session.scalar(
                 select(AgentArtifact).where(
@@ -160,7 +164,7 @@ class PostgresArtifactRepository:
         except SQLAlchemyError as exc:
             raise ArtifactPersistenceError() from exc
         finally:
-            session.close()
+            release_session(session)
 
     def trash(self, artifact_id: str, principal: ExecutionPrincipal) -> dict[str, Any]:
         return self._set_deleted_at(artifact_id, principal, datetime.now(UTC))
@@ -177,6 +181,7 @@ class PostgresArtifactRepository:
         deleted_at: datetime | None,
     ) -> dict[str, Any]:
         session: Session = self._session_factory()
+        set_tenant(session, principal.tenant_id)
         try:
             row = session.scalar(
                 select(AgentArtifact)
@@ -200,7 +205,7 @@ class PostgresArtifactRepository:
             session.rollback()
             raise ArtifactPersistenceError() from exc
         finally:
-            session.close()
+            release_session(session)
 
     @staticmethod
     def _require_owner(record: dict[str, Any], principal: ExecutionPrincipal) -> None:

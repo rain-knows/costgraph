@@ -20,8 +20,9 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - 连接池启用 pre-ping；pool size、overflow 和超时使用服务端配置的有界值。
 - Alembic 是 schema 的唯一创建入口：`20260907_0001` 是迁移图根节点 baseline，`20260917_0002`
   在其上叠加导入任务表与不可变快照键改造；`20260918_0003` 新增 `iam_principal_roles`、
-  `iam_data_scopes` 并扩展 `governance_audit_events` 的动作约束；`backend/alembic/versions/`
-  允许继续追加增量迁移，但必须能从 baseline 线性到达且只有一个 head。API 和 Worker 启动时不自动创建业务表，也不调用
+  `iam_data_scopes` 并扩展 `governance_audit_events` 的动作约束；`20260920_0004` 创建受限应用角色
+  `costgraph_app` 并为全部业务表启用行级安全。`backend/alembic/versions/` 允许继续追加增量迁移，
+  但必须能从 baseline 线性到达且只有一个 head。API 和 Worker 启动时不自动创建业务表，也不调用
   checkpoint saver 的 setup。
 - 迁移只使用显式 `op.` DDL，禁止 `Base.metadata.create_all`、`autogenerate` 和导入运行时模型。
   `20260917_0002` 先把五张成本事实表的 `batch_id` 纳入主键与唯一约束、删除租户级全局唯一约束，
@@ -35,6 +36,8 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - 成本读取必须匹配 `tenant_id`、当前 `published` 批次、产成品零件和期间，并应用服务端 `ExecutionContext.data_scope`。投影表带有 `batch_id` 列但不引用成本事件，因此任何 join 必须显式带 `batch_id` 谓词，不能匿名按 `event_id` 关联。
 - 权限与数据范围只来自 `cost_data.iam_principal_roles`（租户内角色）与 `cost_data.iam_data_scopes`（零件/期间范围）；两张表以 `(tenant_id, principal_id)` 为主键，角色取值由 `ck_iam_principal_roles_known` 约束锁定为四个角色。数据范围为空集表示未被收窄。
 - 租户隔离有两层：Repository 的 `WHERE tenant_id = ...` 是第一层；数据库 RLS 是第二层。RLS 策略以 `current_setting('app.tenant_id', true)` 为唯一判据，未设置时返回 0 行（fail-closed），不存在“缺省租户”的越权路径。RLS 必须能独立拦住漏写 `tenant_id` 的查询，不能与仓储层互相替代。
+- RLS 实现约束：`20260920_0004` 对 15 张带 `tenant_id` 的表直接比较该列；`agent_runtime.messages`、`agent_run_events`、`audit_traces`、`agent_workers` 没有该列，改为经父表推导（分别经 `conversations.conversation_id`、`agent_runs.run_id` 和 `agent_workers.current_run_id`）。策略使用 `ENABLE` 而非 `FORCE`：表所有者（Alembic 与受控运维连接）不受策略约束，受限应用角色 `costgraph_app` 必须写入 `app.tenant_id` 才能看到本租户数据。
+- 租户上下文的唯一入口是 `backend/app/db/tenant.py`：`set_tenant()` 写 `app.tenant_id`，`release_session()` 先回滚再清空该设置后关闭连接，避免连接池复用把租户上下文带给下一个请求。禁止在依赖中用 ContextVar 传递租户——FastAPI 同步依赖运行在线程池的上下文拷贝中，设置无法回传到 endpoint。
 - 导入任务 Repository 复用同一 PostgreSQL 工厂：任务与审计按租户隔离，审计只追加。审计表由 `trg_governance_audit_events_append_only` 触发器拦下任何 UPDATE/DELETE，测试清理需显式禁用触发器。导入载荷存在本地内容寻址对象存储（默认 `IMPORT_OBJECT_STORE_ROOT`，缺省为系统临时目录下 `costgraph-import-objects`），数据库只存 `source_object_key`/`source_object_size`/`source_object_sha256`；`object_key` 由内容 SHA-256 派生，读回时重新校验摘要。
 - 数据治理只读 Repository 复用同一 PostgreSQL 工厂；批次和错误按租户隔离，发布质量统计绑定当前 published batch、当前规则版本和 DataScope。
 - 会话、Turn、消息、Run、Trace 和 Artifact 的业务查询必须匹配 `tenant_id + principal_id`。
@@ -46,4 +49,4 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 
 字段和约束见 [数据字典](data-dictionary.md)，字段格式、48 项费用代码与公式见[成本核算格式](cost-accounting-format.md)，导入发布规则见 [治理与质量](governance.md)。
 
-依据：`backend/app/settings.py`、`backend/app/db/engine.py`、`backend/app/db/models.py`、`backend/alembic/versions/`。
+依据：`backend/app/settings.py`、`backend/app/db/engine.py`、`backend/app/db/models.py`、`backend/app/db/tenant.py`、`backend/alembic/versions/`。

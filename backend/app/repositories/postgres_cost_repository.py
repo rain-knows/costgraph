@@ -4,12 +4,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import and_, asc, cast, desc, distinct, func, select, text
+from sqlalchemy import and_, asc, cast, desc, distinct, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_session_factory
 from app.db.models import DataLoadBatch, FinishedBatchCostProjection, Part
+from app.db.tenant import scoped_session
 from app.domain.authorization import ExecutionContext
 from app.domain.cost import CALCULATION_RULE_VERSION
 from app.domain.errors import CostProjectionUnavailableError
@@ -21,14 +22,13 @@ class PostgresCostRepository:
         self._session_factory = session_factory or get_session_factory()
 
     @contextmanager
-    def _session(self) -> Iterator[Session]:
-        session = self._session_factory()
-        try:
-            timeout_ms = max(1, int(get_settings().agent_tool_timeout_seconds * 1000))
-            session.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
+    def _session(self, tenant_id: str) -> Iterator[Session]:
+        with scoped_session(
+            self._session_factory,
+            tenant_id,
+            statement_timeout_ms=int(get_settings().agent_tool_timeout_seconds * 1000),
+        ) as session:
             yield session
-        finally:
-            session.close()
 
     @staticmethod
     def _published_batch(tenant_id: str):
@@ -70,7 +70,7 @@ class PostgresCostRepository:
         allowed = tuple(execution_context.data_scope.allowed_part_ids)
         if allowed:
             statement = statement.where(Part.part_id.in_(allowed))
-        with self._session() as session:
+        with self._session(execution_context.principal.tenant_id) as session:
             rows = session.scalars(statement).all()
         return [_part_dict(row) for row in rows]
 
@@ -140,7 +140,7 @@ class PostgresCostRepository:
             .outerjoin(projection, join_condition)
             .group_by(batch.c.calculation_rule_version)
         )
-        with self._session() as session:
+        with self._session(execution_context.principal.tenant_id) as session:
             row = session.execute(statement).one_or_none()
         self._require_projection(row[0] if row else None)
         return {
@@ -221,7 +221,7 @@ class PostgresCostRepository:
                 cast([], JSONB),
             ),
         )
-        with self._session() as session:
+        with self._session(execution_context.principal.tenant_id) as session:
             rule_version, total, items = session.execute(statement).one()
         self._require_projection(rule_version)
         return [dict(item) for item in items], int(total)
@@ -251,7 +251,7 @@ class PostgresCostRepository:
             .select_from(batch)
             .outerjoin(projection, join_condition)
         )
-        with self._session() as session:
+        with self._session(execution_context.principal.tenant_id) as session:
             row = session.execute(statement).one_or_none()
         self._require_projection(row[0] if row else None)
         if row[1] is None or not self._period_allowed(execution_context, row[1]):
@@ -300,7 +300,7 @@ class PostgresCostRepository:
                 cast([], JSONB),
             ),
         )
-        with self._session() as session:
+        with self._session(execution_context.principal.tenant_id) as session:
             rule_version, rows = session.execute(statement).one()
         self._require_projection(rule_version)
         return [{**dict(row["summary"]), "trace": dict(row["trace"])} for row in rows]
