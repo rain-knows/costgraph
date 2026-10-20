@@ -8,6 +8,9 @@
 ## 身份边界
 
 - 所有 `/api/*` 受保护接口要求 `Authorization: Bearer <access_token>`。
+- 本地 `APP_ENV=demo` 且显式开启 `LOCAL_DEMO_AUTH_ENABLED=true` 时，固定本地演示令牌
+  `costgraph-local-demo` 映射到 `local-costgraph-user`、`local-costgraph-tenant`、
+  `tenant_admin` 与空数据范围；这是开发启动路径，不适用于 staging/production。
 - 令牌由 `backend/app/auth/oidc.py` 校验：签名（RS256/RS384/RS512/ES256/ES384，经 JWKS）、
   `iss`、`aud`、`exp`/`iat`、以及必需 claim `exp, iat, iss, aud, sub`。
 - `sub` 映射 `principal_id`；租户与角色来自受信 claim（`OIDC_TENANT_CLAIM`、`OIDC_ROLES_CLAIM`），

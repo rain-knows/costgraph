@@ -10,7 +10,7 @@ CostGraph 是制造业成本分析应用。当前产品用 PostgreSQL 中已发�
 - `cost_calculation`：在产成品零件和期间完整后读取已发布事实并确定性卷积最终批次。
 - `report_generation`：识别明确报表意图，在 `cost_calculation` 数据能力之上生成展示型或周期对比型结构化产出。
 
-当前批次图表达真实发生的购置、工艺和领用关系，不是计划 BOM 或库存台账。库存结存、返工分支、副产品、异常工单、审批、PDF/Excel 导出和多 Agent 不在当前实现中。
+当前批次图表达真实发生的购置、工艺和领用关系，不是计划 BOM 或库存台账。库存结存、返工分支、副产品、异常工单、PDF/Excel 导出和多 Agent 不在当前实现中；导入任务审批属于数据治理闭环。
 
 ## 运行链路
 
@@ -27,7 +27,7 @@ React/Vite
   -> FastAPI read-only cost-data API
      -> owner/data-scope policy -> published CostRepository cost projection
      -> deterministic DAG validation, convolution and aggregation
-  -> FastAPI read-only data-admin API (admin/data_management.read)
+  -> FastAPI read-only data-admin API (data_management.read)
      -> tenant-scoped batch metadata, error summaries and published quality snapshot
   -> FastAPI data-admin import API (data_import.submit / data_import.approve)
      -> PostgreSQL import job queue -> independent worker
@@ -64,7 +64,7 @@ load conversation context -> policy gate -> select route
 ## 核心不变量
 
 - `effective_capabilities = requested ∩ role_permissions ∩ server_allowlist`。
-- 主体身份在运行边界绑定：Run 创建时固化 `principal_id`、`tenant_id`、`roles` 与 `data_scope`，主体来自 OIDC 访问令牌并与本地成员关系求交集；Worker 只用该快照，不重新解析客户端身份。`RuntimeRunRequest.principal` 是必填字段，不存在匿名主体。从状态恢复上下文时 `execution_context_from_state()` 重新推导授权，只有传入 `authoritative_principal` 才做身份一致性校验（包括 `data_scope`）；API 传当前主体，Worker 传 Run 中固化的主体。
+- 主体身份在运行边界绑定：Run 创建时固化 `principal_id`、`tenant_id`、`roles` 与 `data_scope`；staging/production 的主体来自 OIDC 访问令牌并与本地成员关系求交集，本地 demo 只允许显式固定开发主体。Worker 只用该快照，不重新解析客户端身份。`RuntimeRunRequest.principal` 是必填字段，不存在匿名主体。从状态恢复上下文时 `execution_context_from_state()` 重新推导授权，只有传入 `authoritative_principal` 才做身份一致性校验（包括 `data_scope`）；API 传当前主体，Worker 传 Run 中固化的主体。
 - 每个 `batch_id` 是不可变快照：成本事实与投影表把批次纳入主键，同一逻辑 ID 不再跨批次覆盖；旧 `published` 快照只在新快照事务提交后变为 `superseded`。
 - 导入任务状态机固定为 `submitted -> validating -> validation_failed | approval_pending -> approved | rejected -> publishing -> published | publish_failed`；`submitted`、`validating`、`approval_pending` 可取消，发布失败保留原已发布快照并允许同一已批准任务重试，不提供回滚接口。
 - HTTP 导入接口只创建任务或改变状态；校验、投影生成和发布全部由 Worker 在单事务中完成，未完成审批的任务不可发布。
@@ -82,8 +82,8 @@ Runtime、Harness、工具/模型和事件控制面分别见 [Runtime](runtime.m
 
 ## 前端认证与权限呈现
 
-- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
-  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- staging/production 登录使用 OIDC Authorization Code + PKCE；本地 APP_ENV=demo 可在前后端同时显式开启固定开发主体。两种路径的访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL。
 - `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
   三者不得退化成"空数据"。

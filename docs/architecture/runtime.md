@@ -34,7 +34,8 @@ agent run（既有路径，未被导入任务重构），一条处理数据导�
 - **重试退避**：可重试失败（数据库/对象存储瞬时故障）不改状态，只把 `available_at` 推后
   `RETRY_BACKOFF_SECONDS = (1, 5, 30)`（按 `attempt_count` 取上限）并释放租约。不可重试失败
   （载荷、完整性、`object_key` 语义错误）转入终态：校验阶段转 `validation_failed`，发布阶段转
-  `publish_failed`。
+  `publish_failed`。可重试故障最多执行 4 次（含首次领取）；达到上限后也进入对应失败终态，
+  不再重新领取。若 Worker 在最后一次领取后崩溃，下一次租约回收会补写失败终态和脱敏审计。
 - **失败分类**：`classify_import_job_exception()` 把异常映射为 `(retryable, error_code)`；
   `ImportObjectStoreError` 不可重试，`SQLAlchemyError`/`OSError` 可重试，载荷解码错误不可重试。
 - **执行内容**：`validating` 任务调用 `CostDataImporter.validate_payload()`，比对载荷哈希与任务
@@ -75,7 +76,7 @@ queued/running/retry_wait -> cancelled
 ```
 
 - API 创建 Run 时固化问题、会话上下文、最近消息、主体（含 `data_scope`）、路由请求、能力请求、版本和预算快照。
-- `RuntimeRunRequest.principal` 必填，主体只能来自 OIDC 认证后的 `ExecutionPrincipal`，没有配置注入或匿名主体路径。
+- `RuntimeRunRequest.principal` 必填；staging/production 的主体来自 OIDC 认证后的 `ExecutionPrincipal`，本地 demo 只允许显式固定开发主体，不存在匿名主体或通用配置注入路径。
 - Worker 使用 `FOR UPDATE SKIP LOCKED` 领取 Run，并维持租约和心跳。
 - 主体身份在运行边界绑定：Worker 用 Run 行和 `request_json["principal"]` 校验固化主体（含 `data_scope`），再用 `execution_context_from_state(..., authoritative_principal=...)` 校验状态；跨租户或伪造 checkpoint 被 `PermissionError` 拒绝，不重新解析客户端身份。
 - 治理审计事件只允许追加：`governance_audit_events` 上有 `BEFORE UPDATE OR DELETE` 触发器（`trg_governance_audit_events_append_only`）直接报错，不依赖调用方自觉。
@@ -101,11 +102,13 @@ Runtime 只记录这些调用的元数据与结果状态，不在生命周期层
 
 取消接口幂等。排队或等待重试的 Run 立即终止；运行中的 Run 记录取消请求，在节点和调用边界生效。终态 Run 不再改变。会话存在活跃 Run 时不能删除。
 
+导入任务由同一 Worker 的独立租约循环执行。租约领取按 `FOR UPDATE SKIP LOCKED`，发布失败允许有限重试；载荷或完整性错误直接进入失败终态。发布事务同时写入新快照、将旧快照标为 `superseded`、推进任务为 `published` 并追加成功审计，因此查询不会观察到任务与快照状态分裂，也不会漏掉成功审计。
+
 ## 健康门禁
 
 `/api/livez` 只表示 API 进程可响应；`/api/readyz` 与 `runtime_ready` 同时检查数据库、Alembic head 和 Worker 心跳，不调用付费模型。前端在 Runtime 不可用时禁止提交，不切换到另一套协议或本地执行。
 
-就绪检查要求数据库 revision 等于代码 head；当前 head 为 `20260920_0004`（租户级行级安全）。
-未升级到该 revision 的库会在 `/api/readyz` 报告 `alembic` 检查失败。
+就绪检查要求数据库 revision 等于代码 head；当前 head 以 Alembic 迁移链为准。
+未升级到当前代码 head 的库会在 `/api/readyz` 报告 `alembic` 检查失败。
 
 依据：`backend/app/agent/runtime.py`、`backend/app/agent/runtime_services.py`、`backend/app/services/runtime_service.py`、`backend/app/repositories/run_repository.py`、`backend/app/worker.py`、`backend/app/services/import_job_service.py`、`backend/app/repositories/postgres_import_job_repository.py`、`backend/app/db/tenant.py`。

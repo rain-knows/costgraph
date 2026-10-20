@@ -55,7 +55,7 @@ React 数据治理页面 / CLI
        仅当前 published batch + 当前规则版本投影完整性门禁 + DataScope 计数
 ```
 
-导入任务接口只创建任务或改变状态；校验、发布由 Worker 完成；不提供回滚或重算。
+导入任务接口只创建任务或改变状态；校验、发布由 Worker 完成；发布使用有限次数的退避重试，不提供回滚或重算。发布事务把新快照、旧快照退役、任务终态和成功审计一起提交。
 错误明细不返回 `raw_payload`，来源文件仅暴露 basename。跨租户任务与批次按未找到处理（404）。
 发布统计缺少当前规则版本投影、投影为空或规则混合时返回 `503/database_unavailable`，
 不返回部分可信质量数据。完整接口契约见 [数据治理契约](../api/data-admin-contract.md)。
@@ -87,8 +87,9 @@ HTTP -> conversation context -> capability/data-scope gate
 
 ## 前端认证与权限呈现
 
-- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
-  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- staging/production 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写
+  localStorage、sessionStorage、cookie 或 URL，刷新页面即回到未登录态。本地 `demo` 可在
+  前后端同时显式开启固定演示主体，仍通过 Bearer 令牌访问 API，不形成匿名回退。
 - `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
   三者不得退化成"空数据"。

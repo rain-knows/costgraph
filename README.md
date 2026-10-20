@@ -25,7 +25,7 @@ CostGraph 当前聚焦一条可以端到端运行的制造成本分析闭环：
 采购 / 工艺事件 -> 实际领用关系 -> 产成品批次 -> 成本卷积 -> 追溯与报表
 ```
 
-已实现产成品批次总览、三套成本视图、批次追溯、Agent 问答，以及展示型和周期对比型结构化报表。库存结存、返工分支、副产品、异常工单、审批、PDF/Excel 导出和多 Agent 编排尚不在当前实现中。
+已实现产成品批次总览、三套成本视图、批次追溯、导入任务审批、Agent 问答，以及展示型和周期对比型结构化报表。库存结存、返工分支、副产品、异常工单、PDF/Excel 导出和多 Agent 编排尚不在当前实现中。
 
 > [!IMPORTANT]
 > 当前仓库处于早期开发阶段，默认配置用于本地演示与验证。用于生产环境前，请自行补充身份认证、密钥管理、网络边界、监控和备份策略。
@@ -84,6 +84,7 @@ flowchart LR
 git clone https://github.com/rain-knows/costgraph.git
 cd costgraph
 Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.example frontend\.env
 ```
 
 编辑 `backend/.env`，至少配置数据库连接：
@@ -91,6 +92,18 @@ Copy-Item backend\.env.example backend\.env
 ```dotenv
 COST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/costgraph
 ```
+
+本地没有 OIDC 身份提供方时，保持 `APP_ENV=demo`，并在两个环境文件中显式开启本地演示认证：
+
+```dotenv
+# backend/.env
+LOCAL_DEMO_AUTH_ENABLED=true
+
+# frontend/.env
+VITE_LOCAL_DEMO_AUTH=true
+```
+
+这会使用固定的本地演示主体，只适用于本地 `demo`；staging/production 仍必须配置 OIDC。
 
 如需连接真实模型，再填写 `DEEPSEEK_API_KEY`。不要提交数据库密码或 API Key。
 
@@ -104,11 +117,11 @@ Push-Location backend
 .\.venv\Scripts\alembic.exe upgrade head
 Pop-Location
 
-$batch = backend\.venv\Scripts\python.exe backend\scripts\import_cost_data.py | ConvertFrom-Json
-backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $batch.batch_id
+$job = backend\.venv\Scripts\python.exe backend\scripts\import_cost_data.py --auto-approve | ConvertFrom-Json
+backend\.venv\Scripts\python.exe backend\scripts\inspect_cost_batch.py $job.job_id
 ```
 
-导入完成后，应确认批次状态为 `published` 且 `error_rows=0`。样例 JSON 只用于导入，不是应用运行时的数据源。
+导入完成后，应确认任务和批次状态为 `published` 且 `error_rows=0`。样例 JSON 只用于导入，不是应用运行时的数据源。
 
 ### 4. 启动应用
 

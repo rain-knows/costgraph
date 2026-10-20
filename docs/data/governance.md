@@ -58,6 +58,8 @@ cancelled         -> (终态)
   任一投影失败整体回滚，**原有已发布快照完整保留**。
 - 发布失败没有回滚接口；`publish_failed` 任务只允许重试发布（回到 `publishing`），
   不回滚、不删除已发布快照，也不提供历史快照切换。
+- 瞬时故障按 `available_at` 退避，最多执行 4 次（含首次领取）；达到上限后进入失败终态，不再自动领取。若 Worker 在最后一次领取后崩溃，租约回收会补写对应失败终态和脱敏审计。
+- 新快照、旧快照退役、任务 `published` 状态和成功审计共用一个事务，避免成功状态或审计记录分裂。
 - 校验失败任务不可查询为成本事实；未完成审批的任务不可发布。
 
 ### 不可变快照
@@ -176,8 +178,8 @@ unavailable / unauthorized 五态，权限失败不得退化为空数据：
 
 ## 前端认证与权限呈现
 
-- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
-  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- staging/production 登录使用 OIDC Authorization Code + PKCE；本地 APP_ENV=demo 可在前后端同时显式开启固定开发主体。两种路径的访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL。
 - `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
   三者不得退化成"空数据"。

@@ -85,11 +85,11 @@ floating section card.
   surface states that the previously published snapshot is unchanged and that
   the Worker retries under its own lease, and the retry control is disabled
   rather than pointing at an endpoint that does not exist.
-- Authentication is part of the interaction truth. The workspace obtains an
-  access token only through OIDC Authorization Code + PKCE, keeps it in memory
-  for the lifetime of the tab, and never persists it to `localStorage`,
-  `sessionStorage`, cookies, or the URL. A reload therefore returns to the
-  signed-out state by design.
+- Authentication is part of the interaction truth. Staging and production obtain
+  an access token only through OIDC Authorization Code + PKCE; local `demo` may
+  use the explicitly enabled fixed development token so the workspace can start
+  without an IdP. Both paths keep the token in memory and never persist it to
+  `localStorage`, `sessionStorage`, cookies, or the URL.
 - `401`, `403`, and `404` are three distinct surfaces, never a shared empty
   state: `401` clears the in-memory token and returns to sign-in, `403` renders
   the unauthorized panel while keeping the session, and `404` renders the

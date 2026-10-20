@@ -9,16 +9,17 @@
 ## 迁移策略
 
 仓库以 `backend/alembic/versions/20260907_0001_costgraph_baseline.py` 为迁移图根节点，
-允许在它之上叠加增量迁移（当前 head `20260920_0004`）。结构变更只能通过 Alembic：
+允许在它之上叠加增量迁移（当前 head `20260921_0005`）。结构变更只能通过 Alembic：
 新表、新列、新索引和键变更均需新增增量迁移，并用显式 `op.` DDL；禁止运行时建表、
 `Base.metadata.create_all`、`autogenerate` 或在迁移中导入运行时模型。
 `scripts/check_docs_sync.ps1` 断言 baseline 存在且 `down_revision = None`，不再限制迁移文件数量；
 `backend/tests/test_baseline_and_boundaries.py` 额外断言迁移图只有一个 head，且等于运行时模型预期的 head。
 删除实现时必须同时删除对应迁移之后的失效文档与断言，不留兼容层。
 
-计划与事实的边界同样适用于批次：二期批次 1（导入任务闭环）与批次 2（OIDC/IAM/RLS）
-已交付的部分写入当前事实文档；批次 3（前端治理工作区与审计页面）尚未交付，只写入
-`docs/plans/` 与 [IAM 契约](../api/iam-contract.md) 的未实现说明，不得写成已实现事实。
+计划与事实的边界同样适用于批次：二期批次 1（导入任务闭环）、批次 2（OIDC/IAM/RLS）
+与前端治理工作区已交付的部分写入当前事实文档；仍未验证的真实 OIDC IdP
+只写入 `docs/plans/` 与运行手册，不得写成已验证事实。浏览器验收必须保留真实 Chromium
+的结果文件和运行命令，不能用 jsdom 结果替代。
 
 ## 变更映射
 

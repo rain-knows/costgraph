@@ -47,7 +47,7 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests -q -rs
 目标为 `0 skipped`。目标库必须可写且**不要**指向共享开发库：`upgrade head` 会创建
 `costgraph_app` 角色并给表加策略，属于改变环境的操作。
 
-当前运行证据：在 `costgraph_test` 上执行 `upgrade head` 后全量 `pytest` 为 `268 passed`（0 skipped），其中 `test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）共 14 个真实库用例全部通过，策略的 fail-closed 与跨租户拦截已得到实测。
+当前运行证据：在专用 `costgraph_test` 上执行 `upgrade head` 后全量 `pytest` 为 `288 passed`（0 skipped），其中 `test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_import_jobs_postgres.py`（17）共 31 个真实库用例全部通过，策略的 fail-closed、跨租户拦截、导入发布事务和最后一次租约崩溃终态已得到实测。
 
 `OIDC_TENANT_CLAIM`（默认 `tenant_id`）、`OIDC_ROLES_CLAIM`（默认 `roles`）、
 `OIDC_JWKS_CACHE_SECONDS`（默认 600）与 `OIDC_LEEWAY_SECONDS`（默认 30）可按身份提供方调整。
@@ -59,7 +59,7 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests -q -rs
 
 ### 身份提供方与角色
 
-身份只来自 OIDC，没有配置主体：
+staging/production 身份只来自 OIDC，没有配置主体：
 
 - `OIDC_ISSUER`、`OIDC_AUDIENCE`、`OIDC_JWKS_URI` 在 `staging`/`production` 未配置时启动即失败，
   不存在"默认租户"或匿名主体回退。
@@ -71,15 +71,22 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests -q -rs
 - `AGENT_PRINCIPAL_ID`、`AGENT_TENANT_ID`、`AGENT_PRINCIPAL_ROLES`、`AGENT_ALLOWED_PART_IDS`、
   `AGENT_ALLOWED_PERIOD_START`、`AGENT_ALLOWED_PERIOD_END` 已删除，配置旧变量不会恢复生效。
 
+本地启动若没有可用的身份提供方，可在 `APP_ENV=demo` 下显式设置
+`LOCAL_DEMO_AUTH_ENABLED=true`，并在前端设置 `VITE_LOCAL_DEMO_AUTH=true`。这会使用固定的
+`local-costgraph-user` / `local-costgraph-tenant` / `tenant_admin` 演示主体和空数据范围，
+令牌只在当前标签页内存中携带。该路径仅匹配 demo 环境与固定本地令牌，staging/production
+始终走 OIDC；关闭任一开关后不会匿名进入工作区。
+
 角色 -> 权限映射见 [Harness](../architecture/harness.md)，接口细节见 [IAM 契约](../api/iam-contract.md)。
 修改角色或范围后无需重启：API 每次请求重新读取成员关系与数据范围。
 
 ## 空库迁移与导入
 
-迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20260918_0003`。
+迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20260921_0005`。
 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换；增量迁移
 `20260917_0002` 新增导入任务与治理审计表，并把 `batch_id` 入键改造为不可变快照；
-`20260918_0003` 新增 IAM 主体角色/数据范围两张表，并扩展审计动作集合。
+`20260918_0003` 新增 IAM 主体角色/数据范围两张表，并扩展审计动作集合；
+`20260920_0004` 启用租户级 RLS，`20260921_0005` 修正父表继承策略并配置 Worker 调度角色。
 已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，
 然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。
 `dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
@@ -101,7 +108,7 @@ Push-Location backend
 Pop-Location
 ```
 
-`alembic current` 必须输出 `20260917_0002 (head)`。API、Worker 和 `dev.ps1` 都不执行 Alembic。
+`alembic current` 必须输出 `20260921_0005 (head)`。API、Worker 和 `dev.ps1` 都不执行 Alembic。
 
 ## 提交导入任务与验证
 
@@ -221,7 +228,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/readyz
 
 `dev.ps1` 兼容 Windows PowerShell 5.1 与 `pwsh`；启动期间会监测新进程，若 API、Worker 或 Vite 在健康检查完成前退出，会立即返回并附对应错误日志末尾。
 
-`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。当前 head 为 `20260917_0002`；`alembic current` 必须显示该 revision，重复执行 `upgrade head` 不会修复历史库中与实际模型不一致的表结构。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
+`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。当前 head 为 `20260921_0005`；`alembic current` 必须显示该 revision，重复执行 `upgrade head` 不会修复历史库中与实际模型不一致的表结构。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
 
 `livez` 只检查进程，`readyz` 检查数据库、Alembic head、必需表和列以及 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek，也不校验列类型、索引和约束或是否已发布成本快照。
 
@@ -262,7 +269,7 @@ git diff --check
 
 `check_docs_sync.ps1` 默认只比较本工作树未提交改动，因此本地跑它必须保留工作区改动。CI 在干净检出上运行，此时它读取 `DOCS_SYNC_BASE_REF`（PR 基分支 SHA 或推送前 SHA）改为比较 `ref...HEAD`；首次推送或手动触发时该 ref 无法解析，脚本会警告并退回本地 diff 行为，不因基准缺失而失败。同一门禁由 `.github/workflows/ci.yml` 的 `docs` job 在 windows-latest 上执行。
 
-CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。CI 不配置 `TEST_COST_DATABASE_URL`，因此 PostgreSQL 集成测试固定为 skip。本地未配置该变量时基线为 `254 passed, 14 skipped`；配置可写测试库后为 `268 passed`（0 skipped）。PostgreSQL 部分由以下文件构成：`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_rls_postgres.py`（6），共 14 个。
+CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。后端 job 使用隔离的 PostgreSQL 16 service，先执行 `alembic upgrade head`，再设置 `TEST_COST_DATABASE_URL` 运行真实集成测试；本机未配置该变量时为 `258 passed, 30 skipped`。专用 `costgraph_test` 上的全量结果为 `288 passed`（0 skipped），覆盖 31 个 PostgreSQL 集成用例。
 
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
 - 导入任务测试覆盖状态机全部合法/非法迁移、幂等提交、重复快照返回已有任务、取消、租约过期、重试退避、审批与发布事务原子性、新旧快照并存、跨租户隔离，以及审计不可修改且不含载荷。
@@ -272,7 +279,7 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 - 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `3.0`、`presentation/period_comparison` 两种样式、`report_generation` 能力路由和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
 - 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态，并覆盖导入任务列表与详情（审批、拒绝原因、取消、校验错误分页、发布失败重试说明）、提交向导（非法载荷不发请求、幂等重复分支）、IAM（角色与范围保存、期间起止拦截）与审计查询（结果徽章、筛选写入 URL）。
 - 生产构建必须通过 bundle 门禁，初始 JS 小于 500 KB；页面与 ECharts 保持路由级懒加载。
-- 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。展示型报表可用仓库根目录的 `scripts/verify_reports_browser.ps1` 执行真实 Chromium CDP 验收；脚本输出 `.pi/goals/evidence/reports-browser/result.json` 和四种状态截图，并检查真实 ECharts canvas、横向溢出、报表关键区块和数量小数显示。
+- 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。展示型报表可用仓库根目录的 `scripts/verify_reports_browser.ps1` 执行真实 Chromium CDP 验收；脚本输出 `.pi/goals/evidence/reports-browser/result.json` 和四种状态截图，并检查真实 ECharts canvas、横向溢出、报表关键区块和数量小数显示。本地没有 IdP 时必须显式传入 `-LocalDemoAuth`，该开关只发送固定 demo Bearer 令牌；staging/production 不得使用它。
 
 真实 DeepSeek 检查单独执行并记录时间、provider、model 和结果；它可能产生少量费用，不能成为默认测试副作用。
 
@@ -294,7 +301,8 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
   三者不得退化成"空数据"。
 - 配置项为 `VITE_OIDC_ISSUER`、`VITE_OIDC_CLIENT_ID`、`VITE_OIDC_REDIRECT_URI`、`VITE_OIDC_SCOPE`，
-  见 `frontend/.env.example`。
+  见 `frontend/.env.example`。本地无 IdP 时，只有同时显式配置 `VITE_LOCAL_DEMO_AUTH=true`
+  与后端 `LOCAL_DEMO_AUTH_ENABLED=true` 才会自动进入 demo 工作区。
 
 ## 治理工作区手动验收
 

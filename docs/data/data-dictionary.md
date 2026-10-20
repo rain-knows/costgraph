@@ -1,6 +1,6 @@
 # 数据/PostgreSQL 数据字典
 
-最终结构以 `backend/app/db/models.py` 与 Alembic 迁移链（baseline `20260907_0001` + 增量 `20260917_0002`）为准。时间使用 `TIMESTAMPTZ`，金额使用 `NUMERIC(18,2)`，数量和工时使用 `NUMERIC(18,4)`，追溯载荷使用 `JSONB`。费用代码和计算口径见[成本核算格式](cost-accounting-format.md)。
+最终结构以 `backend/app/db/models.py` 与 Alembic 迁移链（baseline `20260907_0001` + 增量至当前 head `20260921_0005`）为准。时间使用 `TIMESTAMPTZ`，金额使用 `NUMERIC(18,2)`，数量和工时使用 `NUMERIC(18,4)`，追溯载荷使用 `JSONB`。费用代码和计算口径见[成本核算格式](cost-accounting-format.md)。
 
 ## `cost_data`
 
@@ -35,6 +35,8 @@
 | `decision`、`decision_reason`、`decided_by`、`decided_at` | 审批结论（`approved`/`rejected`）、脱敏原因与主体 |
 | `published_batch_id` | 发布后的快照批次；校验失败批次用 `job_id` 关联 `data_load_batches` |
 | `attempt_count`、`lease_owner`、`lease_expires_at`、`available_at` | Worker 重试计数、租约与退避 |
+
+Worker 对可重试故障最多执行 4 次（含首次领取）；达到上限后校验失败进入 `validation_failed`，发布失败进入 `publish_failed`，不再无限重建租约。
 | `started_at`、`finished_at`、`created_at` | 生命周期时间 |
 
 `CheckConstraint` `ck_data_import_jobs_status` 把 `status` 限定在
@@ -266,8 +268,8 @@ artifacts --business IDs--> runtime records (no cross-schema FK)
 
 ## 前端认证与权限呈现
 
-- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
-  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- staging/production 登录使用 OIDC Authorization Code + PKCE；本地 APP_ENV=demo 可在前后端同时显式开启固定开发主体。两种路径的访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL。
 - `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
   三者不得退化成"空数据"。

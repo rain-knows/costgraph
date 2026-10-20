@@ -1,8 +1,8 @@
 # API/数据治理契约
 
 `/api/data-admin` 是服务端主体的数据治理面：批次与质量只读查询，以及导入任务的提交、查询、
-审批与取消。它不属于 Agent 工具注册表，也不提供完整身份认证或多用户 IAM；主体仍由服务端配置
-注入，见 [Harness](../architecture/harness.md)。导入任务状态机与不可变快照规则见
+审批与取消。它不属于 Agent 工具注册表，也不承担身份认证；主体由 OIDC Bearer 令牌构造，
+本地 `APP_ENV=demo` 且显式开启本地演示认证时才使用固定开发主体，见 [Harness](../architecture/harness.md)。导入任务状态机与不可变快照规则见
 [治理与质量](../data/governance.md)，Worker 调度见 [Runtime](../architecture/runtime.md)。
 
 ## 授权
@@ -113,12 +113,13 @@
 `attempt_count`、`created_at` / `started_at` / `finished_at` 与 `duplicate`。
 租约内部字段（`lease_owner` / `lease_expires_at` / `available_at`）和 `payload` 不出现在响应里。
 详情响应额外返回 `error_codes: [{"error_code", "count"}]`。
+Worker 对瞬时故障最多执行 4 次（含首次领取），使用 `available_at` 退避；达到上限后进入失败终态。发布的新快照、旧快照退役、任务 `published` 状态与成功审计在同一事务提交。
 
 ## 错误码
 
 | HTTP | 错误码 | 触发条件 |
 | --- | --- | --- |
-| `401` | — | 未登录或令牌无效；本批次主体来自服务端配置，实际路径主要覆盖 403/404 |
+| `401` | — | 未登录或令牌无效；本地 demo 也必须显式携带固定 Bearer 令牌 |
 | `403` | `data_management_access_denied` | 缺少 `data_management.read` |
 | `403` | `data_import_submit_access_denied` | 缺少 `data_import.submit` |
 | `403` | `data_import_approve_access_denied` | 缺少 `data_import.approve` |
@@ -152,8 +153,8 @@
 
 ## 前端认证与权限呈现
 
-- 登录使用 OIDC Authorization Code + PKCE；访问令牌只保存在内存，不写 localStorage、
-  sessionStorage、cookie 或 URL，刷新页面即回到未登录态。
+- staging/production 登录使用 OIDC Authorization Code + PKCE；本地 APP_ENV=demo 可在前后端同时显式开启固定开发主体。两种路径的访问令牌只保存在内存，不写 localStorage、
+  sessionStorage、cookie 或 URL。
 - `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
 - 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
   三者不得退化成"空数据"。
