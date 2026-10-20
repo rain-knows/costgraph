@@ -23,6 +23,10 @@ class AppSettings(BaseSettings):
     app_version: str = "dev"
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 仅供本地 demo 启动链路使用。staging/production 永远不能启用它；
+    # 默认关闭，避免配置缺失时意外绕过 OIDC。
+    local_demo_auth_enabled: bool = False
+
     cost_database_url: str | None = None
     cost_database_pool_size: int = Field(default=5, ge=1)
     cost_database_max_overflow: int = Field(default=10, ge=0)
@@ -59,6 +63,8 @@ class AppSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_environment_contract(self) -> AppSettings:
+        if self.local_demo_auth_enabled and self.app_env != "demo":
+            raise ValueError("LOCAL_DEMO_AUTH_ENABLED 仅允许 APP_ENV=demo")
         if self.agent_run_heartbeat_seconds >= self.agent_run_lease_seconds:
             raise ValueError("AGENT_RUN_HEARTBEAT_SECONDS 必须小于租约时长")
         if self.app_env in {"staging", "production"}:

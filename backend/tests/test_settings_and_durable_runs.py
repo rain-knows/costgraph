@@ -63,6 +63,22 @@ def test_deployment_profiles_enforce_production_gates(app_env: str) -> None:
     assert valid.resolved_database_url.startswith("postgresql+psycopg://")
 
 
+def test_local_demo_auth_is_rejected_outside_demo() -> None:
+    with pytest.raises(ValidationError, match="LOCAL_DEMO_AUTH_ENABLED"):
+        AppSettings(
+            _env_file=None,
+            app_env="staging",
+            app_version="2026.08.14",
+            cost_database_url="postgresql://user:pass@localhost/example",
+            audit_trace_mode="metadata",
+            cors_allowed_origins="https://cost.example.com",
+            oidc_issuer="https://idp.example.com",
+            oidc_audience="costgraph",
+            oidc_jwks_uri="https://idp.example.com/jwks",
+            local_demo_auth_enabled=True,
+        )
+
+
 def test_settings_cache_can_be_reset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_VERSION", "one")
     reset_settings()

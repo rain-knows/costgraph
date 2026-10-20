@@ -11,7 +11,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
 from app.auth import oidc
-from app.auth.context import get_current_principal
+from app.auth.context import (
+    LOCAL_DEMO_ACCESS_TOKEN,
+    LOCAL_DEMO_PRINCIPAL_ID,
+    LOCAL_DEMO_TENANT_ID,
+    get_current_principal,
+)
 from app.auth.errors import PERMISSION_DENIED
 from app.auth.oidc import InvalidTokenError, OIDCVerifier
 from app.domain.authorization import ExecutionPrincipal
@@ -274,6 +279,35 @@ def test_missing_bearer_token_returns_401_with_challenge() -> None:
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"
     assert response.json()["detail"]["code"] == "missing_bearer_token"
+
+
+def test_demo_auth_uses_fixed_local_principal_only_when_explicitly_enabled(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "demo")
+    monkeypatch.setenv("LOCAL_DEMO_AUTH_ENABLED", "true")
+    from app.settings import reset_settings
+
+    reset_settings()
+    principal = get_current_principal(f"Bearer {LOCAL_DEMO_ACCESS_TOKEN}")
+    assert principal.principal_id == LOCAL_DEMO_PRINCIPAL_ID
+    assert principal.tenant_id == LOCAL_DEMO_TENANT_ID
+    assert principal.roles == ("tenant_admin",)
+
+
+def test_demo_auth_is_not_a_fallback_when_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "demo")
+    monkeypatch.setenv("LOCAL_DEMO_AUTH_ENABLED", "false")
+    from app.settings import reset_settings
+
+    reset_settings()
+    app = create_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get(
+        "/api/me", headers={"Authorization": f"Bearer {LOCAL_DEMO_ACCESS_TOKEN}"}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "invalid_token"
 
 
 def test_invalid_bearer_token_returns_401(monkeypatch) -> None:

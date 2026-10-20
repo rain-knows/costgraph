@@ -21,6 +21,12 @@ from app.domain.authorization import (
     build_execution_context,
 )
 from app.repositories.postgres_iam_repository import PostgresIamRepository
+from app.settings import get_settings
+
+LOCAL_DEMO_ACCESS_TOKEN = "costgraph-local-demo"
+LOCAL_DEMO_PRINCIPAL_ID = "local-costgraph-user"
+LOCAL_DEMO_TENANT_ID = "local-costgraph-tenant"
+LOCAL_DEMO_ROLES: tuple[RoleId, ...] = ("tenant_admin",)
 
 
 def get_current_principal(
@@ -28,11 +34,27 @@ def get_current_principal(
 ) -> ExecutionPrincipal:
     """用 Bearer 令牌认证主体，并按租户内的成员关系收窄角色与数据范围。"""
     token = _bearer_token(authorization)
+    settings = get_settings()
+    if (
+        settings.app_env == "demo"
+        and settings.local_demo_auth_enabled
+        and token == LOCAL_DEMO_ACCESS_TOKEN
+    ):
+        return _local_demo_principal()
     try:
         claims = get_oidc_verifier().verify(token)
     except OIDCError as exc:
         raise auth_http_error(401, INVALID_TOKEN) from exc
     return _authorize(PostgresIamRepository(), claims)
+
+
+def _local_demo_principal() -> ExecutionPrincipal:
+    """返回显式开启的本地演示主体；该路径不参与任何非 demo 环境。"""
+    return ExecutionPrincipal(
+        principal_id=LOCAL_DEMO_PRINCIPAL_ID,
+        tenant_id=LOCAL_DEMO_TENANT_ID,
+        roles=LOCAL_DEMO_ROLES,
+    )
 
 
 PrincipalDependency = Annotated[ExecutionPrincipal, Depends(get_current_principal)]
