@@ -307,11 +307,11 @@ cancelled        -> (终态)
 
 ## 9. 验证与完成标准
 
-必须真实执行（有可用 PostgreSQL：`postgresql://rainknows:rainknows@47.94.88.78:5432/costgraph_test`，superuser）：
+必须在专用、可写的 PostgreSQL 测试库上真实执行（连接串通过 `TEST_COST_DATABASE_URL` 环境变量提供；不要把凭据写入仓库）：
 
 ```powershell
 $env:PYTHONPATH="D:\work\costgraph\backend"
-$env:TEST_COST_DATABASE_URL="postgresql://rainknows:rainknows@47.94.88.78:5432/costgraph_test"
+$env:TEST_COST_DATABASE_URL="postgresql://<user>:<password>@<host>:5432/<dedicated_test_database>"
 backend\.venv\Scripts\python.exe -m alembic upgrade head   # 在 backend 目录
 backend\.venv\Scripts\python.exe -m pytest backend\tests -q
 .\scripts\check_python_quality.ps1

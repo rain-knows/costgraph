@@ -33,6 +33,8 @@
 
 在对应命令实际执行前不得把“实现中，待验收”改成“已验收”。旧产品期间模型的 `P001/2026-06/13.90` 结果及其测试数量仅是被替换版本的历史证据，不再证明当前实现。
 
+上表保留 2026-09-09 的阶段快照；其“尚未执行”项已由下文的补充复验与收尾复验更新，当前交付状态以最新复验记录为准。
+
 ## 新 canonical 边界
 
 - 导入文件：`parts.json`、`cost_events.json`、`cost_event_inputs.json`、`cost_records.json`。
@@ -43,19 +45,19 @@
 
 ## 本轮验收清单
 
-完成实现后，将实际命令、通过数、skip 和环境限制补到本节；一种测试不能替代另一种。下表为 2026-10-09 在本机（Windows / Python 3.12 / PostgreSQL 18.4）实际执行的结果。
+完成实现后，将实际命令、通过数、skip 和环境限制补到本节；一种测试不能替代另一种。下表汇总当前可复核的本机与专用测试库证据。
 
 | 检查 | 当前证据 |
 | --- | --- |
-| 后端完整 Pytest | `96 passed, 3 skipped, 2 warnings`（`backend\.venv\Scripts\python.exe -m pytest backend\tests -q`） |
-| Ruff lint 与 format | `All checks passed!`、`94 files already formatted`（`scripts\check_python_quality.ps1`） |
-| 真实 PostgreSQL 导入、隔离与 Runtime 集成 | 已连通真实库：`alembic current` = `20260907_0001`，四 schema 共 19 表，`parts=118`、`cost_events=2494`、`cost_event_inputs=2076`、`cost_records=7061`、`finished_batch_cost_projections=420`，租户 `local-costgraph-tenant` 唯一 `published` 发布批次。durable 三例（Worker 领取/checkpoint 恢复/原子终态、API SSE 取消与 owner 隔离、预算与固定协议版本）仍需 `TEST_COST_DATABASE_URL` 指向独立测试库后才算覆盖，当前仍为 3 skip。 |
+| 后端完整 Pytest | 专用 `costgraph_test`：`288 passed, 0 skipped, 2 warnings`；未配置测试库时本地：`258 passed, 30 skipped` |
+| Ruff lint 与 format | `All checks passed!`、`128 files already formatted`（`scripts\check_python_quality.ps1`） |
+| 真实 PostgreSQL 导入、隔离与 Runtime 集成 | `alembic current` = `20260921_0005`；31 个 PostgreSQL 集成用例全部通过，包含 RLS、导入发布、durable、审计和最后一次租约领取后崩溃终态。 |
 | 黄金批次 API 与三视图恒等式 | 真实库上通过：制造成本 `50000.00`、制造单位成本1 `50.00`、合计成本2 `53500.00`、合计单位成本2 `53.50`，三视图恒等式通过 |
 | `verify_agent.py` 与离线 Eval | `verify_agent.py` 通过（`FG-001 2026-06`，`total_cost=50000.00`，`unit_cost=53.50`，`source_events=5`）；离线 Eval `6/6` 通过；fixture 不证明真实模型可用 |
-| 真实 DeepSeek | 本轮未执行；必须单独记录 provider、model、时间和结果 |
-| 前端 Vitest、生产构建与 bundle 门禁 | Vitest `27 passed`（清除了宿主继承的 `NODE_ENV=production`；`vitest.config.ts` 已固定测试 `NODE_ENV`）；生产构建通过；bundle 初始 JavaScript `196.9 KiB`，低于 `500 KiB` 门禁 |
+| 真实 DeepSeek | 当时未执行；2026-10-19 补充复验已单独记录 provider、model、时间和结果（见文末） |
+| 前端 Vitest、生产构建与 bundle 门禁 | Vitest `92 passed`；生产构建与 bundle 门禁通过；初始 JavaScript `211.2 KiB`，低于 `500 KiB` 门禁 |
 | 只读性能验收 | `benchmark_cost_queries.py` 五项 p95 `0.38–0.49s`，均 `< 1.0s` 且 `max_queries = 2` |
-| 桌面/移动、浅/深主题视觉检查 | 未执行 |
+| 桌面/移动、浅/深主题视觉检查 | 真实 Chromium 已执行；四种状态截图与 `result.json` 写入 `.pi/goals/evidence/reports-browser/` |
 | 文档同步与 `git diff --check` | 均通过 |
 
 导入命令未在本轮重新执行；上表 PostgreSQL 证据来自当前已发布快照的只读查询（overview、批次详情、投影计数），不等同于一次全新导入的验收。
@@ -69,3 +71,27 @@
 3. 有真实生产规则后分别增加返工、副产品、异常和审批，不预建占位抽象。
 
 每个阶段定义唯一 canonical 契约并直接删除被替代路径；未实现能力只记录在本计划，不进入事实文档或占位 UI。
+
+## 2026-10-19 补充复验
+
+- 真实 DeepSeek：执行 `backend\\.venv\\Scripts\\python.exe backend\\scripts\\verify_deepseek.py`，
+  `deepseek-v4-flash` 意图解析与成本分析均成功，共 3,304 tokens；本地黄金 fixture 仅提供确定性输入。
+- 真实浏览器报表验收：在当前本地 `APP_ENV=demo` 环境使用
+  `scripts\\verify_reports_browser.ps1 -LocalDemoAuth` 执行；该模式只发送固定本地 demo
+  Bearer 令牌，不改变 staging/production 的 OIDC 强制认证。独立 Chromium 的四种视口/主题
+  结果写入 `.pi/goals/evidence/reports-browser/result.json` 与四张截图。
+- 未设置 `TEST_COST_DATABASE_URL` 时的本地全量后端测试为 `258 passed, 30 skipped`；本轮在专用
+  `costgraph_test` 上设置该变量后全量为 `288 passed, 0 skipped`，真实 PostgreSQL 集成结果见
+  [治理计划](data-management-and-permission-governance.md)与[运行手册](../operations/runbook.md)。
+
+## 2026-10-20 收尾复验
+
+- 真实 Chromium：执行 `scripts\\verify_reports_browser.ps1 -LocalDemoAuth` 通过。验收覆盖成本列表
+  18 条批次、批次详情三页签、周期对比报表和展示型报表；桌面/移动与浅/深主题均通过，ECharts
+  canvas 有实际绘制、无横向溢出、数量为整数显示，并验证 Tab 键焦点。证据位于
+  `.pi/goals/evidence/reports-browser/result.json` 及四张状态截图。
+- 专用 PostgreSQL：`costgraph_test` 已在 `20260921_0005`，执行 `backend\\.venv\\Scripts\\python.exe
+  -m pytest backend\\tests -q` 得到 `288 passed, 0 skipped`；17 个导入任务集成用例包含最后一次
+  租约领取后崩溃转 `validation_failed` 和脱敏审计验证。
+- 真实 OIDC IdP：仍未执行。当前环境没有外部 issuer、audience、JWKS 和前端 client 配置；本地
+  demo 认证仅用于启动与浏览器验收，不替代部署环境的真实 OIDC 验证。

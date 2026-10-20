@@ -100,11 +100,12 @@ Authorization: Bearer
   `DetachedInstanceError`。
 - Worker 领取任务后用被领取行的 `tenant_id` 注入会话，Worker 角色不会变成跨租户后门。
 
-**验证状态：已在真实 PostgreSQL 上执行。** 以受限角色 `costgraph_app` 连接
-`costgraph_test` 后全量 `pytest` 为 `268 passed`（0 skipped），其中
+**验证状态：已在真实 PostgreSQL 上执行。** 以受限角色 `costgraph_app` 连接专用
+`costgraph_test` 后全量 `pytest` 为 `288 passed`（0 skipped），其中
 `test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、
-`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）共 14 个
-真实库用例全部通过。
+`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、
+`test_import_jobs_postgres.py`（17）共 31 个真实库用例全部通过，包含最后一次租约领取后崩溃
+的失败终态。
 
 ## 二期批次 2C（已完成，前端能力）：前端治理工作区
 
@@ -118,8 +119,10 @@ Authorization: Bearer
 - 前端测试 92 passed（含新增 7 个测试文件）；`npm run build` 与 `npm run test:bundle` 通过，
   初始 JS 210.5 KiB（门禁 500 KiB）。
 
-**未验证：浏览器级验收**（明暗主题、窄屏布局、键盘可达）只有 jsdom 用例覆盖，
-未在真实 Chromium 中执行。
+真实 Chromium 浏览器验收已通过：`scripts/verify_reports_browser.ps1 -LocalDemoAuth` 覆盖
+成本列表、批次详情、周期对比报表、展示型报表，以及桌面/移动、浅/深主题；结果与四张截图
+写入 `.pi/goals/evidence/reports-browser/`，并检查 ECharts canvas、横向溢出、数量格式和 Tab
+键焦点。
 
 计划内容只写入 `docs/plans/`，不得作为已实现依据引用。批次 2B/2C 的当前能力以
 [存储](../data/storage.md)、[运行手册](../operations/runbook.md) 与代码为准。
@@ -128,9 +131,14 @@ Authorization: Bearer
 
 以下验证项已具备代码与测试用例，但尚未取得运行证据，交付时不得声称已验证：
 
-1. 浏览器级前端验收：明暗主题、窄屏布局、键盘可达（目前只有 jsdom 用例覆盖）；
-2. 真实 OIDC IdP 对接（当前用例使用本地 RSA 与静态 JWKS）；
-3. 真实 DeepSeek 入口调用。
+1. 真实 OIDC IdP 对接（当前环境没有可用的外部 issuer/audience/JWKS/client 配置；本地 demo
+   认证和本地 RSA/JWKS 测试不等价于真实 IdP 验证）。
 
-真实 PostgreSQL 上的 RLS 拦截、数据治理、durable 与审计不可变验证已在本轮取得运行证据
-（`268 passed`，0 skipped），不再列为未关闭项。
+**真实 DeepSeek 调用已验证：** 2026-10-19 09:22 UTC 执行
+`backend\.venv\Scripts\python.exe backend\scripts\verify_deepseek.py`，模型
+`deepseek-v4-flash` 的意图解析与成本分析两次调用均返回 `success`，合计用量 3,304 tokens。
+该运行使用本地黄金 fixture；它证明真实 provider 入口可调用，不替代 Chromium 或 OIDC 验收。
+
+真实 PostgreSQL 上的 RLS 拦截、数据治理、durable、审计不可变和租约耗尽验证已在本轮取得运行证据
+（`288 passed`，0 skipped），不再列为未关闭项。浏览器验收也已取得真实 Chromium 证据；仅真实
+外部 OIDC IdP 对接仍需部署环境提供配置后执行。
