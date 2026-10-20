@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -679,11 +680,17 @@ class CostDataImporter:
         events: list[dict[str, Any]],
         inputs: list[dict[str, Any]],
         records: list[dict[str, Any]],
+        session_factory: Callable[[], Session] | None = None,
+        manage_transaction: bool = True,
     ) -> dict[str, Any]:
         """把已通过校验的输入发布为不可变快照批次（单事务）。
 
         旧 ``published`` 批次只在新快照所在事务提交时才转为 ``superseded``，
         因此发布失败会完整保留原有已发布快照。
+
+        Worker 发布时需要把快照行、旧批次退役、任务状态和审计事件放在同一个
+        事务里，因此允许调用方传入会话并自己控制事务边界
+        （``manage_transaction=False``）：此时不提交、不回滚也不关闭会话。
         """
 
         payload = _payload(parts, events, inputs, records)
@@ -691,7 +698,7 @@ class CostDataImporter:
         if _canonical_hash(payload) != source_snapshot_hash:
             raise ValueError("载荷与 source_snapshot_hash 不一致。")
         now = datetime.now(UTC)
-        session: Session = self._session_factory()
+        session: Session = (session_factory or self._session_factory)()
         try:
             session.execute(
                 update(DataLoadBatch)
@@ -775,12 +782,15 @@ class CostDataImporter:
                     now=now,
                 ),
             )
-            session.commit()
+            if manage_transaction:
+                session.commit()
         except Exception:
-            session.rollback()
+            if manage_transaction:
+                session.rollback()
             raise
         finally:
-            session.close()
+            if manage_transaction:
+                session.close()
         return {
             "batch_id": str(batch_id),
             "tenant_id": tenant_id,

@@ -52,6 +52,8 @@ from app.settings import get_settings
 IMPORT_JOB_LEASE_SECONDS = 90
 #: 可重试失败的退避序列（秒）。
 RETRY_BACKOFF_SECONDS = (1, 5, 30)
+#: 含首次执行在内的总尝试次数上限；超过后退避不再重建租约。
+MAX_JOB_ATTEMPTS = 4
 #: 审计 detail 允许的键；其余键（尤其载荷）一律丢弃。
 AUDIT_DETAIL_ALLOWED_KEYS = frozenset(
     {
@@ -384,6 +386,7 @@ class PostgresImportJobRepository:
     # --------------------------------------------------------- worker leases
 
     def claim_next_job(self, worker_id: str) -> dict[str, Any] | None:
+        """领取任务；耗尽次数的过期租约在此落失败终态并记审计。"""
         now = utc_now()
         lease_expires_at = now + timedelta(seconds=IMPORT_JOB_LEASE_SECONDS)
         statement = (
@@ -391,7 +394,8 @@ class PostgresImportJobRepository:
             .where(
                 DataImportJob.available_at <= now,
                 or_(
-                    DataImportJob.status.in_(CLAIMABLE_JOB_STATUSES),
+                    DataImportJob.status.in_(CLAIMABLE_JOB_STATUSES)
+                    & (DataImportJob.attempt_count < MAX_JOB_ATTEMPTS),
                     (
                         DataImportJob.status.in_(WORKING_JOB_STATUSES)
                         & or_(
@@ -411,6 +415,39 @@ class PostgresImportJobRepository:
                 session.rollback()
                 return None
             previous_status = row.status
+            if (
+                previous_status in WORKING_JOB_STATUSES
+                and row.attempt_count >= MAX_JOB_ATTEMPTS
+            ):
+                terminal_status = (
+                    "validation_failed"
+                    if previous_status == "validating"
+                    else "publish_failed"
+                )
+                validate_job_transition(previous_status, terminal_status)
+                row.status = terminal_status
+                row.lease_owner = None
+                row.lease_expires_at = None
+                row.finished_at = now
+                self.append_audit_event_in_session(
+                    session,
+                    tenant_id=row.tenant_id,
+                    actor_principal_id=worker_id,
+                    action=terminal_status,
+                    target_type="import_job",
+                    target_id=str(row.job_id),
+                    outcome="failure",
+                    job_id=row.job_id,
+                    detail={
+                        "error_code": "import_job_attempt_limit_exceeded",
+                        "retryable": False,
+                        "previous_status": previous_status,
+                        "status": terminal_status,
+                        "attempt_count": row.attempt_count,
+                    },
+                )
+                session.commit()
+                return None
             target_status = CLAIM_TARGET_STATUS.get(previous_status, previous_status)
             if target_status != previous_status:
                 validate_job_transition(previous_status, target_status)
@@ -486,33 +523,99 @@ class PostgresImportJobRepository:
             session.commit()
             return target
 
-    def complete_publish(
-        self, job_id: UUID, worker_id: str, *, published_batch_id: UUID
-    ) -> str:
+    @contextmanager
+    def publish_transaction(self, job_id: UUID, worker_id: str) -> Iterator[Session]:
+        """把发布写入和任务推进括在同一个事务里的受租约会话。
+
+        回调抛出任何异常都会回滚整个事务：新快照行、旧批次 ``superseded``
+        和任务状态一起消失，已发布快照保持原样。
+        """
         with self._worker_session() as session:
-            row = self._leased_job(
+            self._leased_job(
                 session, job_id=job_id, worker_id=worker_id, expected="publishing"
             )
-            validate_job_transition(row.status, "published")
-            now = utc_now()
-            row.status = "published"
-            row.published_batch_id = published_batch_id
-            row.lease_owner = None
-            row.lease_expires_at = None
-            row.finished_at = now
+            try:
+                yield session
+            except Exception:
+                session.rollback()
+                raise
             session.commit()
-            return "published"
+
+    @staticmethod
+    def mark_published(
+        session: Session, job_id: UUID, *, published_batch_id: UUID
+    ) -> None:
+        """在调用方的事务里把任务推进到终态，不提交。"""
+        row = session.scalar(
+            select(DataImportJob)
+            .where(DataImportJob.job_id == job_id)
+            .with_for_update()
+        )
+        if row is None:
+            raise ImportJobNotFoundError(job_id)
+        validate_job_transition(row.status, "published")
+        row.status = "published"
+        row.published_batch_id = published_batch_id
+        row.lease_owner = None
+        row.lease_expires_at = None
+        row.finished_at = utc_now()
+
+    @staticmethod
+    def append_audit_event_in_session(
+        session: Session,
+        *,
+        tenant_id: str,
+        actor_principal_id: str,
+        action: str,
+        target_type: str,
+        target_id: str,
+        outcome: str,
+        job_id: UUID | None = None,
+        batch_id: UUID | None = None,
+        request_id: str | None = None,
+        detail: Mapping[str, Any] | None = None,
+    ) -> None:
+        """在调用方事务中追加脱敏审计行。"""
+        session.execute(
+            GovernanceAuditEvent.__table__.insert(),
+            [
+                {
+                    "tenant_id": tenant_id,
+                    "job_id": job_id,
+                    "batch_id": batch_id,
+                    "actor_principal_id": actor_principal_id,
+                    "action": action,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "outcome": outcome,
+                    "request_id": request_id,
+                    "detail": _safe_audit_detail(detail),
+                    "created_at": utc_now(),
+                }
+            ],
+        )
 
     def fail_job(
-        self, job_id: UUID, worker_id: str, *, retryable: bool, error_code: str
+        self,
+        job_id: UUID,
+        worker_id: str,
+        *,
+        retryable: bool,
+        error_code: str,
     ) -> str:
+        """落一个失败的执行结果，返回失败后的任务状态。
+
+        ``attempt_count`` 从已锁定的数据库任务行读取：一旦用完重试额度，
+        即使底层异常被归类为可重试，也必须进入终态，否则一次失败会让任务在
+        ``validating``/``publishing`` 里无休止重建租约。
+        """
         with self._worker_session() as session:
             row = self._leased_job(session, job_id=job_id, worker_id=worker_id)
             current = row.status
             if current not in WORKING_JOB_STATUSES:
                 raise ImportJobStateConflictError(current, "failed")
             now = utc_now()
-            if retryable:
+            if retryable and row.attempt_count < MAX_JOB_ATTEMPTS:
                 backoff = RETRY_BACKOFF_SECONDS[
                     min(max(row.attempt_count - 1, 0), len(RETRY_BACKOFF_SECONDS) - 1)
                 ]
@@ -590,6 +693,8 @@ class PostgresImportJobRepository:
         )
         if row is None:
             raise ImportJobLeaseLostError(job_id)
+        # ``expected`` 是调用方声明“我按这个状态领取的”，因此它必须与数据库当前
+        # 状态相等；拿它去匹配目标状态会把所有正常领取判成丢租约。
         if expected is not None and row.status != expected:
             raise ImportJobLeaseLostError(job_id, status=row.status)
         return row

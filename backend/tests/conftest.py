@@ -9,6 +9,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 os.environ.setdefault("APP_ENV", "test")
+os.environ["LOCAL_DEMO_AUTH_ENABLED"] = "false"
 # 测试一律离线：非空占位值才能盖过 backend/.env 里的真实 Key
 # （SettingsConfigDict 的 env_ignore_empty 会跳过空字符串），
 # 而含 placeholder 的值会被确定性判定为不可用。

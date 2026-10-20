@@ -12,7 +12,7 @@
   状态机非法迁移抛 :class:`ImportJobStateConflictError`
   （错误码 ``import_job_state_conflict``）。
 - ``claim_next_job`` / ``renew_job_lease`` / ``complete_validation`` /
-  ``complete_publish`` / ``fail_job`` 是 Worker 租约路径。
+  ``fail_job`` 是 Worker 租约路径；发布状态只能与快照共用事务推进。
 
 状态机合法迁移在 repository 层确定性校验；``claim_next_job`` 额外回收租约
 已过期的 ``validating`` / ``publishing`` 行，使可重试失败无需非法状态迁移。
@@ -40,7 +40,13 @@ IMPORT_JOB_STATUSES: tuple[str, ...] = (
 )
 
 #: 只有这些状态允许被 Worker 领取并推进（规格第 4 节状态机）。
-CLAIMABLE_JOB_STATUSES: tuple[str, ...] = ("submitted", "approved")
+#: ``publish_failed`` 是唯一的重试回边：已批准任务发布失败后保留租约语义，
+#: 可由下一次领取重新进入 ``publishing``；``validation_failed`` 不可重试。
+CLAIMABLE_JOB_STATUSES: tuple[str, ...] = (
+    "submitted",
+    "approved",
+    "publish_failed",
+)
 
 #: 领取后需要进入的工作中状态；租约过期时可在同一状态内重试。
 WORKING_JOB_STATUSES: tuple[str, ...] = ("validating", "publishing")
@@ -48,6 +54,7 @@ WORKING_JOB_STATUSES: tuple[str, ...] = ("validating", "publishing")
 CLAIM_TARGET_STATUS: dict[str, str] = {
     "submitted": "validating",
     "approved": "publishing",
+    "publish_failed": "publishing",
 }
 
 ALLOWED_JOB_TRANSITIONS: dict[str, frozenset[str]] = {
@@ -166,7 +173,7 @@ class ImportJobRepository(Protocol):
         ...
 
     def claim_next_job(self, worker_id: str) -> dict[str, Any] | None:
-        """``FOR UPDATE SKIP LOCKED`` 领取 ``submitted`` / ``approved`` 任务。"""
+        """领取新提交、已批准或发布失败待重试的任务。"""
         ...
 
     def renew_job_lease(self, job_id: UUID, worker_id: str) -> bool: ...
@@ -181,10 +188,6 @@ class ImportJobRepository(Protocol):
         原始错误文本与载荷一律不落库。
         """
         ...
-
-    def complete_publish(
-        self, job_id: UUID, worker_id: str, *, published_batch_id: UUID
-    ) -> str: ...
 
     def fail_job(
         self, job_id: UUID, worker_id: str, *, retryable: bool, error_code: str

@@ -89,11 +89,12 @@ def test_cancellable_statuses_match_spec() -> None:
 
 
 def test_worker_claim_targets_and_working_statuses() -> None:
-    assert set(CLAIMABLE_JOB_STATUSES) == {"submitted", "approved"}
+    assert set(CLAIMABLE_JOB_STATUSES) == {"submitted", "approved", "publish_failed"}
     assert set(WORKING_JOB_STATUSES) == {"validating", "publishing"}
     assert CLAIM_TARGET_STATUS == {
         "submitted": "validating",
         "approved": "publishing",
+        "publish_failed": "publishing",
     }
     for source, target in CLAIM_TARGET_STATUS.items():
         assert target in ALLOWED_JOB_TRANSITIONS[source]

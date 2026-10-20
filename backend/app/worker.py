@@ -346,38 +346,55 @@ class AgentWorker:
         )
 
     def _publish_import_job(self, job: dict[str, Any]) -> None:
-        job_id: UUID = job["job_id"]
         payload = decode_import_payload(self.object_store.get(job["source_object_key"]))
         # 每次发布尝试开始即留痕；失败重试会再追加一条，published/publish_failed
         # 各自记结果。
         self._audit_job(job, action="publishing", outcome="success", detail=None)
-        published = self.importer.publish_validated_snapshot(
-            tenant_id=job["tenant_id"],
-            source_system=job["source_system"],
-            batch_id=job_id,
-            source_file=job["source_file_name"],
-            source_snapshot_hash=job["snapshot_hash"],
-            calculation_rule_version=job["calculation_rule_version"],
-            parts=payload["parts"],
-            events=payload["cost_events"],
-            inputs=payload["cost_event_inputs"],
-            records=payload["cost_records"],
-        )
-        batch_id = UUID(str(published["batch_id"]))
-        self.import_job_repository.complete_publish(
-            job_id, self.worker_id, published_batch_id=batch_id
-        )
-        self.import_job_repository.append_audit_event(
-            tenant_id=job["tenant_id"],
-            actor_principal_id=self._import_actor(),
-            action="published",
-            target_type="snapshot",
-            target_id=str(batch_id),
-            outcome="success",
-            job_id=job_id,
-            batch_id=batch_id,
-            detail={"batch_id": str(batch_id), "status": "published"},
-        )
+        self._publish_with_job_commit(job, payload)
+
+    def _publish_with_job_commit(
+        self, job: dict[str, Any], payload: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, Any]:
+        """发布快照与推进任务状态在同一事务，避免“已发布但任务仍 publishing”。
+
+        ``publish_validated_snapshot`` 自己开关会话与事务，所以这里向它注入一个
+        带租约锁的会话工厂：快照行、旧批次 ``superseded``、任务 ``published`` 和
+        审计事件一起提交或一起回滚。事务提交后旧快照才不再对查询可见。
+        """
+        job_id: UUID = job["job_id"]
+        with self.import_job_repository.publish_transaction(
+            job_id, self.worker_id
+        ) as session:
+            published = self.importer.publish_validated_snapshot(
+                tenant_id=job["tenant_id"],
+                source_system=job["source_system"],
+                batch_id=job_id,
+                source_file=job["source_file_name"],
+                source_snapshot_hash=job["snapshot_hash"],
+                calculation_rule_version=job["calculation_rule_version"],
+                parts=payload["parts"],
+                events=payload["cost_events"],
+                inputs=payload["cost_event_inputs"],
+                records=payload["cost_records"],
+                session_factory=lambda: session,
+                manage_transaction=False,
+            )
+            self.import_job_repository.mark_published(
+                session, job_id, published_batch_id=UUID(str(published["batch_id"]))
+            )
+            self.import_job_repository.append_audit_event_in_session(
+                session,
+                tenant_id=job["tenant_id"],
+                actor_principal_id=self._import_actor(),
+                action="published",
+                target_type="snapshot",
+                target_id=str(published["batch_id"]),
+                outcome="success",
+                job_id=job_id,
+                batch_id=UUID(str(published["batch_id"])),
+                detail={"batch_id": str(published["batch_id"]), "status": "published"},
+            )
+        return published
 
     def _fail_import_job(
         self, job: dict[str, Any], *, retryable: bool, error_code: str
@@ -386,7 +403,10 @@ class AgentWorker:
         status = str(job["status"])
         try:
             new_status = self.import_job_repository.fail_job(
-                job_id, self.worker_id, retryable=retryable, error_code=error_code
+                job_id,
+                self.worker_id,
+                retryable=retryable,
+                error_code=error_code,
             )
         except ImportJobLeaseLostError:
             LOGGER.warning(
@@ -403,7 +423,7 @@ class AgentWorker:
                 "retryable": retryable,
             },
         )
-        if retryable:
+        if new_status in {"validating", "publishing"}:
             # 任务仍在工作中状态等待退避重试，审计只在终态失败时追加。
             return
         self._audit_job(
