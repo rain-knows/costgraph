@@ -140,7 +140,8 @@ export function IamPage() {
           <tbody>{principals.map((item) => <tr key={item.principal_id} tabIndex={0} aria-selected={item.principal_id === selectedId} onClick={() => select(item)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(item) } }}>
             <td className="num">{item.principal_id}</td>
             <td><div className="flex flex-wrap gap-1">{item.roles.map((role) => <Badge key={role} tone="info">{ROLE_LABELS[role]}</Badge>)}</div></td>
-            <td className="num">{item.data_scope.allowed_part_ids.length ? `${item.data_scope.allowed_part_ids.length} 个零件` : '全部零件'}</td>            <td className="num">{scopeLabel(item)}</td>
+            <td className="num">{item.data_scope.allowed_part_ids.length ? `${item.data_scope.allowed_part_ids.length} 个零件` : '全部零件'}</td>
+            <td className="num">{scopeLabel(item)}</td>
             <td className="num">{item.updated_by}</td>
             <td className="num">{formatDateTime(item.updated_at)}</td>
           </tr>)}</tbody></table></div>
