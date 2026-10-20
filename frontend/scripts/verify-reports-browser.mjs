@@ -11,6 +11,8 @@ const repoRoot = path.resolve(frontendRoot, '..')
 const baseUrl = process.env.REPORTS_BROWSER_BASE_URL ?? 'http://127.0.0.1:5174'
 const evidenceDir = path.join(repoRoot, '.pi', 'goals', 'evidence', 'reports-browser')
 const artifactListUrl = `${baseUrl}/api/artifacts?state=active&limit=100&offset=0`
+const accessToken = (process.env.REPORTS_BROWSER_ACCESS_TOKEN ?? '').trim()
+const requestHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
 const states = [
   { name: 'desktop-light', width: 1440, height: 1000, theme: 'light', mobile: false },
   { name: 'desktop-dark', width: 1440, height: 1000, theme: 'dark', mobile: false },
@@ -23,7 +25,7 @@ function assert(condition, message) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url)
+  const response = await fetch(url, { headers: requestHeaders })
   assert(response.ok, `HTTP ${response.status} from ${url}`)
   return response.json()
 }
@@ -103,14 +105,68 @@ async function evaluate(cdp, expression) {
 async function waitForPageReady(cdp, expectedTheme = null) {
   const deadline = Date.now() + 20_000
   let consecutiveReadyChecks = 0
+  let lastState = null
   while (Date.now() < deadline) {
     const result = await evaluate(cdp, `(() => ({ title: document.querySelector('h1')?.innerText ?? '', theme: document.documentElement.dataset.theme ?? '', report: document.querySelector('[aria-label="展示型报表核心指标"]') !== null, chart: [...document.querySelectorAll('canvas')].some((canvas) => canvas.getBoundingClientRect().width > 0) }))()`)
+    lastState = result
+    if (result.title === '登录以继续') {
+      throw new Error('Browser verification requires an authenticated OIDC session or explicit local demo authentication')
+    }
     const ready = result.title.includes('展示型报表') && result.report && result.chart && (!expectedTheme || result.theme === expectedTheme)
     consecutiveReadyChecks = ready ? consecutiveReadyChecks + 1 : 0
     if (consecutiveReadyChecks >= 3) return result
     await delay(300)
   }
-  throw new Error(`Report page did not stabilize for theme ${expectedTheme ?? '(initial)'} before timeout`)
+  throw new Error(`Report page did not stabilize for theme ${expectedTheme ?? '(initial)'} before timeout; last state: ${JSON.stringify(lastState)}`)
+}
+
+async function waitForCondition(cdp, expression, label, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  let last = null
+  while (Date.now() < deadline) {
+    last = await evaluate(cdp, expression)
+    if (last) return last
+    await delay(250)
+  }
+  throw new Error(`${label} did not become ready; last value: ${JSON.stringify(last)}`)
+}
+
+async function verifyCostWorkspace(cdp, artifact) {
+  await cdp.send('Page.navigate', { url: `${baseUrl}/cost-data?period=${encodeURIComponent(artifact.period)}` })
+  await waitForCondition(cdp, `document.querySelector('h1')?.innerText === '批次成本数据库' && document.querySelectorAll('tbody tr').length > 0`, 'Cost data page')
+  const costState = await evaluate(cdp, `(() => ({
+    title: document.querySelector('h1')?.innerText ?? '',
+    rows: document.querySelectorAll('tbody tr').length,
+    table: document.querySelector('table[aria-label]')?.getAttribute('aria-label') ?? '',
+  }))()`)
+  assert(costState.rows > 0, 'Cost data page has no batch rows')
+  assert(costState.table === '六类制造成本', `Unexpected cost view: ${costState.table}`)
+
+  await evaluate(cdp, "document.querySelector('tbody tr')?.click()")
+  await waitForCondition(cdp, `location.pathname.startsWith('/cost-data/')`, 'Cost detail route')
+  await waitForCondition(cdp, `document.querySelector('h1')?.innerText?.length > 0 && ['成本汇总', '成本追溯', '来源记录'].every((value) => document.body.innerText.includes(value))`, 'Cost detail content')
+  const detailState = await evaluate(cdp, `(() => ({
+    title: document.querySelector('h1')?.innerText ?? '',
+    summary: document.body.innerText.includes('成本汇总'),
+    trace: document.body.innerText.includes('成本追溯'),
+    sources: document.body.innerText.includes('来源记录'),
+  }))()`)
+  assert(detailState.summary && detailState.trace && detailState.sources, 'Cost detail tabs are missing')
+  return { cost: costState, detail: detailState }
+}
+
+async function verifyKeyboardAccess(cdp) {
+  await evaluate(cdp, 'document.body.focus()')
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
+  const active = await evaluate(cdp, `(() => {
+    const element = document.activeElement
+    return element && element !== document.body && element !== document.documentElement
+      ? { tag: element.tagName, role: element.getAttribute('role'), label: element.getAttribute('aria-label'), text: element.textContent?.trim().slice(0, 80) }
+      : null
+  })()`)
+  assert(active, 'Tab did not move focus to a keyboard reachable control')
+  return active
 }
 
 async function captureState(cdp, state, artifact, firstState) {
@@ -198,14 +254,16 @@ async function main() {
 
     const list = await fetchJson(artifactListUrl)
     let artifact = null
+    let comparisonArtifact = null
     for (const candidate of list.items ?? []) {
       const detail = await fetchJson(`${baseUrl}/api/artifacts/${encodeURIComponent(candidate.artifact_id)}`)
       if (detail.report_json?.report_style === 'presentation' && detail.deleted_at === null) {
         artifact = candidate
-        break
       }
+      if (detail.report_json?.report_style === 'period_comparison' && detail.deleted_at === null) comparisonArtifact = candidate
     }
     assert(artifact, 'No active presentation Artifact is available through the API')
+    assert(comparisonArtifact, 'No active period comparison Artifact is available through the API')
     const detail = await fetchJson(`${baseUrl}/api/artifacts/${encodeURIComponent(artifact.artifact_id)}`)
     assert(detail.artifact_id === artifact.artifact_id, 'Artifact detail ID did not match API list item')
 
@@ -228,13 +286,31 @@ async function main() {
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
 
+    const workspace = await verifyCostWorkspace(cdp, artifact)
+    await cdp.send('Page.navigate', { url: `${baseUrl}/reports/${encodeURIComponent(comparisonArtifact.artifact_id)}?period=${encodeURIComponent(comparisonArtifact.period)}` })
+    await waitForCondition(cdp, `document.querySelector('h1')?.innerText.includes('周期对比报表')`, 'Period comparison report')
+    const comparison = await evaluate(cdp, `(() => ({
+      title: document.querySelector('h1')?.innerText ?? '',
+      baseline: document.body.innerText.includes('基准期'),
+      target: document.body.innerText.includes('目标期'),
+      chart: [...document.querySelectorAll('canvas')].some((canvas) => canvas.getBoundingClientRect().width > 0),
+    }))()`)
+    assert(comparison.baseline && comparison.target && comparison.chart, 'Period comparison content is incomplete')
+
     const measurements = []
-    for (const [index, state] of states.entries()) measurements.push({ state: state.name, ...(await captureState(cdp, state, artifact, index === 0)) })
+    for (const [index, state] of states.entries()) {
+      const measurement = await captureState(cdp, state, artifact, index === 0)
+      if (index === 0) measurement.keyboardFocus = await verifyKeyboardAccess(cdp)
+      measurements.push({ state: state.name, ...measurement })
+    }
     const result = {
       status: 'passed',
       artifact_id: artifact.artifact_id,
+      comparison_artifact_id: comparisonArtifact.artifact_id,
       report_style: detail.report_json.report_style,
       route: `/reports/${artifact.artifact_id}?period=${artifact.period}`,
+      workspace,
+      comparison,
       views: measurements,
     }
     const resultPath = path.join(evidenceDir, 'result.json')
