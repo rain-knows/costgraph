@@ -5,6 +5,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.domain.authorization import ExecutionPrincipal, build_execution_context
+from app.services.cost_calculation_service import aggregate_part_period_costs
 from app.services.llm_service import (
     generate_cost_analysis_with_llm,
     get_deepseek_model,
@@ -27,11 +28,14 @@ if __name__ == "__main__":
             roles=("tenant_admin",),
         ),
     )
-    calculation = CostFixtureRepository().load_finished_batch_projection(
+    batch = CostFixtureRepository().load_finished_batch_projection(
         "FG-A-2026-06", context
     )
-    if calculation is None:
+    if batch is None:
         raise RuntimeError("找不到黄金产成品批次 FG-A-2026-06")
+    # The analysis prompt consumes the same aggregated shape as the report
+    # service, even when this verification fixture contains only one batch.
+    calculation = aggregate_part_period_costs([batch])
     analysis = generate_cost_analysis_with_llm(
         calculation["part"], "2026-06", calculation
     )

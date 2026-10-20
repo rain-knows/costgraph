@@ -17,6 +17,20 @@ jobs:
   backend:
     name: 后端测试与静态检查
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: costgraph_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d costgraph_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: backend
@@ -37,11 +51,16 @@ jobs:
           ruff check .
           ruff format --check .
 
-      # 不配置 COST_DATABASE_URL：PostgreSQL 集成测试会明确 skip，
-      # 三个 skip 的数量由 docs/plans/agent-demo-to-costgraph.md 记录。
+      - name: 执行数据库迁移
+        env:
+          COST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/costgraph_test
+        run: python -m alembic upgrade head
+
       - name: Pytest
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
+          COST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/costgraph_test
+          TEST_COST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/costgraph_test
         run: python -m pytest tests -q
 
   frontend:
