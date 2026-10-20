@@ -49,7 +49,7 @@ beforeEach(() => vi.resetAllMocks())
 
 describe('DataAdminPage', () => {
   it('shows unauthorized state on direct URL without the permission', () => {
-    renderPage('/data-admin', { ...context, me: { ...context.me!, roles: ['user'], permissions: [] } })
+    renderPage('/data-admin', { ...context, me: { ...context.me!, roles: ['viewer'], permissions: [] } })
     expect(screen.getByRole('alert')).toHaveAttribute('data-state', 'unauthorized')
     expect(screen.getByText('当前主体没有 data_management.read 权限。')).toBeInTheDocument()
     expect(dataAdmin.listDataAdminBatches).not.toHaveBeenCalled()

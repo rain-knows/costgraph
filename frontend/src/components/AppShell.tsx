@@ -71,7 +71,15 @@ export function AppShell() {
   useEffect(() => {
     const controller = new AbortController()
     setMeLoading(true)
-    getMe(controller.signal).then(setMe).catch(() => { setMe(null); setMeError(true) }).finally(() => setMeLoading(false))
+    setMeError(false)
+    getMe(controller.signal)
+      .then((value) => { setMe(value); setMeError(false) })
+      .catch(() => {
+        if (controller.signal.aborted) return
+        setMe(null)
+        setMeError(true)
+      })
+      .finally(() => { if (!controller.signal.aborted) setMeLoading(false) })
     return () => controller.abort()
   }, [meReload])
 

@@ -3,12 +3,17 @@ import { KeyRound } from 'lucide-react'
 import { Button } from '../components/ui'
 import { beginAuthorization, redirectToAuthorization } from './loginFlow'
 import { readOidcConfig } from './oidc'
+import { isLocalDemoAuthEnabled } from './localDemo'
 
 /** 未登录态：整页登录入口，不使用占位数据伪装工作区。 */
 export function LoginPage({ notice }: { notice?: string }) {
   const config = readOidcConfig()
   const [error, setError] = useState(notice ?? '')
   const [pending, setPending] = useState(false)
+
+  if (isLocalDemoAuthEnabled()) {
+    return <main className="grid min-h-screen place-items-center bg-[var(--bg)] px-6 text-[var(--fg)]"><p className="label" role="status">正在进入本地演示工作区</p></main>
+  }
 
   async function signIn() {
     if (!config) return
