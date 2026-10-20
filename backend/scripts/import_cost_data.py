@@ -92,16 +92,18 @@ def _read_status(principal: Any, job_id: UUID) -> str:
 
 
 def _drive(worker: Any, principal: Any, job_id: UUID, targets: frozenset[str]) -> str:
-    """驱动 Worker 处理任务，直到进入 ``targets`` 中的一个状态。"""
+    """驱动 Worker 处理任务，直到进入目标状态或已知终态。
+
+    幂等提交可能返回一个已经结束的旧任务；此时直接返回其终态，避免
+    ``--auto-approve`` 因重复执行而把成功任务误报为异常。
+    """
     deadline = time.monotonic() + DRIVE_TIMEOUT_SECONDS
     while True:
         status = _read_status(principal, job_id)
         if status in targets:
             return status
         if status in FINAL_STATUSES:
-            raise RuntimeError(
-                f"导入任务已处于终态 {status}，无法继续驱动到 {sorted(targets)}。"
-            )
+            return status
         if time.monotonic() > deadline:
             raise TimeoutError(
                 f"导入任务未在 {DRIVE_TIMEOUT_SECONDS:.0f}s 内到达 {sorted(targets)}，"
