@@ -519,7 +519,8 @@ class GovernanceAuditEvent(Base):
         CheckConstraint(
             "action in ('submitted', 'validated', 'validation_failed', "
             "'approved', 'rejected', 'publishing', 'published', "
-            "'publish_failed', 'cancelled', "
+            "'publish_failed', 'cancelled', 'validation_retry_scheduled', "
+            "'publish_retry_scheduled', "
             "'iam.roles_updated', 'iam.scope_updated')",
             name="ck_governance_audit_events_action",
         ),

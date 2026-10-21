@@ -6,7 +6,7 @@
 - ``FOR UPDATE SKIP LOCKED`` 领取：并发 Worker 不会重复领取同一任务；
 - 租约过期回收、可重试退避、不可重试终态；
 - 未审批任务不可发布（``approved`` 门禁）；
-- 发布失败时旧快照保持 ``published``，任务可重试；
+- 发布失败时旧快照保持 ``published``，失败任务不被自动重新领取；
 - 新快照提交后旧快照转 ``superseded``，查询只读当前 ``published``。
 
 全部用例需要 ``TEST_COST_DATABASE_URL``；未配置时跳过，避免把设计当成证据。
@@ -21,6 +21,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from conftest import postgres_unavailable
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import OperationalError
 
@@ -96,6 +97,15 @@ def _job_row(job_id: UUID) -> DataImportJob | None:
         return session.get(DataImportJob, job_id)
 
 
+def _audit_events(job_id: UUID) -> list[GovernanceAuditEvent]:
+    with get_session_factory()() as session:
+        return session.scalars(
+            select(GovernanceAuditEvent)
+            .where(GovernanceAuditEvent.job_id == job_id)
+            .order_by(GovernanceAuditEvent.event_id)
+        ).all()
+
+
 def _force_lease_expiry(job_id: UUID) -> None:
     with get_session_factory()() as session:
         session.execute(
@@ -132,7 +142,9 @@ def import_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """真实 PostgreSQL + 受控对象存储目录；离开时按租户清理全部行。"""
     database_url = os.getenv("TEST_COST_DATABASE_URL")
     if not database_url:
-        pytest.skip("未配置 TEST_COST_DATABASE_URL，跳过真实 PostgreSQL 导入任务测试。")
+        postgres_unavailable(
+            "未配置 TEST_COST_DATABASE_URL，无法运行真实 PostgreSQL 导入任务测试。"
+        )
     monkeypatch.setenv("COST_DATABASE_URL", database_url)
     monkeypatch.setenv("IMPORT_OBJECT_STORE_ROOT", str(tmp_path / "objects"))
     reset_engine()
@@ -221,10 +233,17 @@ def _outcome(import_jobs):
 
 def _to_approval_pending(import_jobs, job_id: UUID) -> None:
     repository = import_jobs["repository"]
-    repository.claim_next_job("worker-setup")
-    assert repository.complete_validation(
-        job_id, "worker-setup", outcome=_outcome(import_jobs)
-    ) == ("approval_pending")
+    outcome = _outcome(import_jobs)
+    claimed = None
+    for worker_id in ("worker-setup", "worker-setup-retry"):
+        claimed = repository.claim_next_job(worker_id)
+        if claimed is not None and claimed["job_id"] == job_id:
+            break
+    assert claimed is not None and claimed["job_id"] == job_id
+    worker_id = claimed["lease_owner"]
+    assert repository.complete_validation(job_id, worker_id, outcome=outcome) == (
+        "approval_pending"
+    )
 
 
 def _approve(import_jobs, job_id: UUID) -> None:
@@ -334,6 +353,29 @@ def test_stale_worker_cannot_complete_after_lease_taken(import_jobs) -> None:
     assert row.lease_owner == "worker-b"
 
 
+def test_expired_lease_cannot_be_renewed_or_used_before_takeover(import_jobs) -> None:
+    """过期时刻立即失去写权限，即使尚无其他 Worker 接管。"""
+    repository = import_jobs["repository"]
+    job = _submit(import_jobs)
+    assert repository.claim_next_job("worker-a") is not None
+    _force_lease_expiry(job["job_id"])
+
+    assert repository.renew_job_lease(job["job_id"], "worker-a") is False
+    with pytest.raises(ImportJobLeaseLostError):
+        repository.complete_validation(
+            job["job_id"], "worker-a", outcome=_outcome(import_jobs)
+        )
+    with pytest.raises(ImportJobLeaseLostError):
+        repository.fail_job(
+            job["job_id"], "worker-a", retryable=False, error_code="stale_worker"
+        )
+
+    row = _job_row(job["job_id"])
+    assert (
+        row is not None and row.status == "validating" and row.lease_owner == "worker-a"
+    )
+
+
 def test_heartbeat_only_renews_for_lease_owner(import_jobs) -> None:
     repository = import_jobs["repository"]
     job = _submit(import_jobs)
@@ -341,6 +383,31 @@ def test_heartbeat_only_renews_for_lease_owner(import_jobs) -> None:
 
     assert repository.renew_job_lease(job["job_id"], "worker-b") is False
     assert repository.renew_job_lease(job["job_id"], "worker-a") is True
+
+
+def test_publish_transaction_fences_worker_if_lease_expires_before_commit(
+    import_jobs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = import_jobs["repository"]
+    job = _submit(import_jobs)
+    _to_approval_pending(import_jobs, job["job_id"])
+    _approve(import_jobs, job["job_id"])
+    claimed = repository.claim_next_job("worker-a")
+    assert claimed is not None
+
+    with (
+        pytest.raises(ImportJobLeaseLostError),
+        repository.publish_transaction(job["job_id"], "worker-a") as session,
+    ):
+        repository.mark_published(session, job["job_id"], published_batch_id=uuid4())
+        monkeypatch.setattr(
+            "app.repositories.postgres_import_job_repository.utc_now",
+            lambda: datetime.now(UTC) + timedelta(hours=1),
+        )
+
+    row = _job_row(job["job_id"])
+    assert row is not None and row.status == "publishing"
+    assert row.published_batch_id is None
 
 
 # ---------------------------------------------------------------- 失败与重试
@@ -457,8 +524,10 @@ def test_non_retryable_validation_failure_is_terminal(import_jobs) -> None:
     assert repository.claim_next_job("worker-b") is None
 
 
-def test_publish_failed_is_the_only_retry_back_edge(import_jobs) -> None:
-    """``publishing`` 不可重试失败转 ``publish_failed``，后者仍是可领取状态。"""
+def test_publish_failed_is_terminal_and_retryable_failure_keeps_working_state(
+    import_jobs,
+) -> None:
+    """不可重试发布错误进入终态；可重试错误留在 publishing 并按退避重试。"""
     repository = import_jobs["repository"]
     job = _submit(import_jobs)
     _to_approval_pending(import_jobs, job["job_id"])
@@ -479,33 +548,62 @@ def test_publish_failed_is_the_only_retry_back_edge(import_jobs) -> None:
         == "publish_failed"
     )
     assert _job_row(job["job_id"]).status == "publish_failed"
+    terminal_audit = _audit_events(job["job_id"])[-1]
+    assert terminal_audit.action == "publish_failed"
+    assert terminal_audit.detail["error_code"] == "import_payload_invalid"
+    assert terminal_audit.detail["retryable"] is False
+    assert terminal_audit.detail["retry_scheduled"] is False
 
-    _make_available_now(job["job_id"])
+    assert repository.claim_next_job("worker-c") is None
+
+    # 可重试错误保留 publishing 状态，通过 available_at 决定何时再次领取。
+    retry_payload = _sample_payload()
+    retry_payload["parts"][0]["unit"] = "kg"
+    job_retry = _submit(import_jobs, payload=retry_payload)
+    _to_approval_pending(import_jobs, job_retry["job_id"])
+    _approve(import_jobs, job_retry["job_id"])
     retry = repository.claim_next_job("worker-c")
     assert retry is not None
-    assert retry["claimed_from"] == "publish_failed"
     assert retry["status"] == "publishing"
-
-    # Attempts include the initial validation claim. A repeatedly failing
-    # publish must not become an unbounded claim loop through publish_failed.
-    assert retry["attempt_count"] == 3
+    assert retry["attempt_count"] == 2
     assert (
         repository.fail_job(
-            job["job_id"],
+            job_retry["job_id"],
             "worker-c",
             retryable=True,
             error_code="database_unavailable",
         )
         == "publishing"
     )
-    _make_available_now(job["job_id"])
-    final_attempt = repository.claim_next_job("worker-d")
+    assert _job_row(job_retry["job_id"]).status == "publishing"
+    retry_audit = _audit_events(job_retry["job_id"])[-1]
+    assert retry_audit.action == "publish_retry_scheduled"
+    assert retry_audit.detail["error_code"] == "database_unavailable"
+    assert retry_audit.detail["retryable"] is True
+    assert retry_audit.detail["retry_scheduled"] is True
+    assert repository.claim_next_job("worker-d") is None
+    _make_available_now(job_retry["job_id"])
+    retry = repository.claim_next_job("worker-d")
+    assert retry is not None
+    assert retry["job_id"] == job_retry["job_id"]
+    assert retry["attempt_count"] == 3
+    assert (
+        repository.fail_job(
+            job_retry["job_id"],
+            "worker-d",
+            retryable=True,
+            error_code="database_unavailable",
+        )
+        == "publishing"
+    )
+    _make_available_now(job_retry["job_id"])
+    final_attempt = repository.claim_next_job("worker-e")
     assert final_attempt is not None
     assert final_attempt["attempt_count"] == 4
     assert (
         repository.fail_job(
-            job["job_id"],
-            "worker-d",
+            job_retry["job_id"],
+            "worker-e",
             retryable=True,
             error_code="database_unavailable",
         )
@@ -805,7 +903,7 @@ def test_worker_publish_failure_keeps_previous_snapshot(
     assert "publishing" in actions
     assert "publish_failed" in actions
 
-    # 已批准任务的发布失败只能重试发布：恢复载荷后被下一个 Worker 接手到 published。
+    # 不可重试的发布失败保持终态；恢复外部载荷不会隐式重新领取任务。
     assert row.attempt_count == 2
     with get_session_factory()() as session:
         session.execute(
@@ -814,17 +912,8 @@ def test_worker_publish_failure_keeps_previous_snapshot(
             .values(source_object_key=job["source_object_key"])
         )
         session.commit()
-    retried = worker.import_job_repository.claim_next_job(worker.worker_id)
-    assert retried is not None
-    assert retried["claimed_from"] == "publish_failed"
-    assert retried["status"] == "publishing"
-    retried["source_object_key"] = job["source_object_key"]
-    worker._execute_import_job(retried)
-
-    row = _job_row(job["job_id"])
-    assert row is not None
-    assert row.status == "published"
-    assert _published_batches(tenant_id) == {str(row.published_batch_id)}
+    assert worker.import_job_repository.claim_next_job(worker.worker_id) is None
+    assert _published_batches(tenant_id) == {str(baseline_batch)}
     with get_session_factory()() as session:
         assert (
             session.scalar(
@@ -832,5 +921,5 @@ def test_worker_publish_failure_keeps_previous_snapshot(
                     DataLoadBatch.batch_id == baseline_batch
                 )
             )
-            == "superseded"
+            == "published"
         )

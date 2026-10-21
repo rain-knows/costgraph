@@ -15,9 +15,8 @@ Create Date: 2026-09-21
 ``audit_traces``/``agent_run_events`` 在设置了合法 ``app.tenant_id`` 后能读到
 **全部租户**的行——正是 RLS 要消除的跨租户泄漏。这里改为用子表名限定外层列。
 
-同时补建 ``costgraph_worker``：策略原先并未引用该角色，但 Worker 需要跨租户
-读取两张调度表（``cost_data.data_import_jobs``、``agent_runtime.agent_runs``），
-否则无法发现待领取工作。该角色同理 `NOLOGIN`，由部署时授予登录与凭据。
+同时补建 ``costgraph_worker`` 并授予两张调度表的表权限。可跨租户策略由后续
+``20261021_0006`` 单独配置；此迁移本身尚未让该角色通过启用的 RLS。
 """
 
 from __future__ import annotations

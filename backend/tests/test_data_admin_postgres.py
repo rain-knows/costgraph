@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from conftest import postgres_unavailable
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, update
 
@@ -64,7 +65,9 @@ def _sample_records() -> dict[str, list[dict]]:
 def postgres_data_admin(monkeypatch: pytest.MonkeyPatch):
     database_url = os.getenv("TEST_COST_DATABASE_URL")
     if not database_url:
-        pytest.skip("未配置 TEST_COST_DATABASE_URL，跳过真实 PostgreSQL 数据治理测试。")
+        postgres_unavailable(
+            "未配置 TEST_COST_DATABASE_URL，无法运行真实 PostgreSQL 数据治理测试。"
+        )
     monkeypatch.setenv("COST_DATABASE_URL", database_url)
     reset_engine()
     settings = get_settings()

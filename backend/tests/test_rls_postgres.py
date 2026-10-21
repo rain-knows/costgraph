@@ -20,12 +20,14 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import pytest
+from conftest import postgres_unavailable
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_session_factory, reset_engine
 from app.db.models import (
+    DataImportJob,
     DataLoadBatch,
     RuntimeAgentRun,
     RuntimeAuditTrace,
@@ -33,6 +35,13 @@ from app.db.models import (
     RuntimeTurn,
 )
 from app.db.tenant import release_session, set_tenant
+from app.domain.authorization import (
+    DataScope,
+    ExecutionPrincipal,
+    build_execution_context,
+)
+from app.repositories.postgres_data_admin_repository import PostgresDataAdminRepository
+from app.repositories.postgres_import_job_repository import PostgresImportJobRepository
 from app.settings import get_settings
 
 APP_ROLE = "costgraph_app"
@@ -46,14 +55,18 @@ def _require_reachable(database_url: str) -> None:
         with socket.create_connection((host, port), timeout=1.5):
             return
     except OSError:
-        pytest.skip(f"无法连接 {host}:{port}，跳过真实 PostgreSQL RLS 测试。")
+        postgres_unavailable(
+            f"无法连接 {host}:{port}，无法运行真实 PostgreSQL RLS 测试。"
+        )
 
 
 @pytest.fixture
 def app_role_session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
     database_url = os.getenv("TEST_COST_DATABASE_URL")
     if not database_url:
-        pytest.skip("未配置 TEST_COST_DATABASE_URL，跳过真实 PostgreSQL RLS 测试。")
+        postgres_unavailable(
+            "未配置 TEST_COST_DATABASE_URL，无法运行真实 PostgreSQL RLS 测试。"
+        )
     _require_reachable(database_url)
     monkeypatch.setenv("COST_DATABASE_URL", database_url)
     reset_engine()
@@ -64,7 +77,9 @@ def app_role_session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
     except DBAPIError:
         session.close()
         reset_engine()
-        pytest.skip(f"目标库缺少受限角色 {APP_ROLE}，请先执行 alembic upgrade head。")
+        postgres_unavailable(
+            f"目标库缺少受限角色 {APP_ROLE}，请先执行 alembic upgrade head。"
+        )
     try:
         yield session
     finally:
@@ -197,6 +212,53 @@ def test_rls_filters_rows_by_tenant(app_role_session: Session) -> None:
     assert batch_a not in visible_b
 
 
+def test_repository_uses_restricted_role_across_reused_sessions(
+    app_role_session: Session,
+) -> None:
+    """Repository 查询经 costgraph_app RLS，复用连接时租户上下文仍被清理。"""
+    tenant_a, tenant_b = f"repo-a-{uuid4().hex}", f"repo-b-{uuid4().hex}"
+    batch_a, batch_b = uuid4(), uuid4()
+    set_tenant(app_role_session, tenant_a)
+    _seed_batch(app_role_session, tenant_a, batch_a)
+    set_tenant(app_role_session, tenant_b)
+    _seed_batch(app_role_session, tenant_b, batch_b)
+    app_role_session.commit()
+
+    backend_pids: list[int] = []
+
+    def restricted_session_factory() -> Session:
+        session = get_session_factory()()
+        session.execute(text("SET LOCAL ROLE costgraph_app"))
+        backend_pids.append(session.scalar(text("SELECT pg_backend_pid()")))
+        return session
+
+    repository = PostgresDataAdminRepository(session_factory=restricted_session_factory)
+
+    def context(tenant_id: str):
+        principal = ExecutionPrincipal(
+            principal_id="rls-repository-principal",
+            tenant_id=tenant_id,
+            roles=("data_operator",),
+            data_scope=DataScope(),
+        )
+        return build_execution_context(
+            "manual",
+            ["cost_calculation"],
+            requested_permissions=["data_management.read"],
+            principal=principal,
+        )
+
+    rows_a, total_a = repository.list_batches(
+        context(tenant_a), status=None, page=1, page_size=100
+    )
+    rows_b, total_b = repository.list_batches(
+        context(tenant_b), status=None, page=1, page_size=100
+    )
+    assert total_a == 1 and {str(row["batch_id"]) for row in rows_a} == {str(batch_a)}
+    assert total_b == 1 and {str(row["batch_id"]) for row in rows_b} == {str(batch_b)}
+    assert len(backend_pids) == 2 and backend_pids[0] == backend_pids[1]
+
+
 def test_rls_without_tenant_setting_returns_empty(app_role_session: Session) -> None:
     """未设置 app.tenant_id 时必须收敛为空集。
 
@@ -273,29 +335,61 @@ def test_agent_run_events_inherit_tenant_through_run(
     assert run_b not in visible
 
 
-def test_worker_role_can_read_scheduling_rows_across_tenants(
+def test_worker_role_claims_scheduling_rows_across_tenants(
     app_role_session: Session,
 ) -> None:
-    """调度表必须允许 worker 跨租户领取，否则 Worker 无法发现待办任务。"""
+    """真实 Worker Repository 必须能通过受限角色领取两个租户的任务。"""
     tenant_a = f"rls-s-a-{uuid4().hex}"
     tenant_b = f"rls-s-b-{uuid4().hex}"
-    set_tenant(app_role_session, tenant_a)
-    _seed_batch(app_role_session, tenant_a, uuid4())
-    set_tenant(app_role_session, tenant_b)
-    _seed_batch(app_role_session, tenant_b, uuid4())
+    now = _now()
+    job_ids = {uuid4(), uuid4()}
+    for tenant_id, job_id in zip((tenant_a, tenant_b), job_ids, strict=True):
+        set_tenant(app_role_session, tenant_id)
+        app_role_session.execute(
+            DataImportJob.__table__.insert().values(
+                job_id=job_id,
+                tenant_id=tenant_id,
+                principal_id="rls-test-principal",
+                principal_roles=["data_operator"],
+                source_system="rls-test",
+                source_object_key="sha256/test.json",
+                source_object_size=1,
+                source_object_sha256="a" * 64,
+                snapshot_hash="b" * 64,
+                calculation_rule_version="cost-v1",
+                idempotency_key=f"rls-worker-{job_id}",
+                status="submitted",
+                total_rows=1,
+                available_at=now,
+                created_at=now,
+            )
+        )
     app_role_session.commit()
 
-    app_role_session.execute(text("SET ROLE costgraph_worker"))
-    try:
-        job_tenants = set(
-            app_role_session.execute(
-                text("SELECT DISTINCT tenant_id FROM cost_data.data_import_jobs")
-            )
-            .scalars()
-            .all()
-        )
-    finally:
-        app_role_session.execute(text(f"SET ROLE {APP_ROLE}"))
+    worker_session_factory = get_session_factory()
 
-    # 只断言不报错且有权限读到调度表；具体内容取决于库里已有任务。
-    assert isinstance(job_tenants, set)
+    def restricted_worker_session() -> Session:
+        session = worker_session_factory()
+        session.execute(text("SET LOCAL ROLE costgraph_worker"))
+        return session
+
+    repository = PostgresImportJobRepository(session_factory=restricted_worker_session)
+    claimed_jobs = [
+        repository.claim_next_job("rls-integration-worker") for _ in range(2)
+    ]
+
+    assert all(job is not None for job in claimed_jobs)
+    assert {job["job_id"] for job in claimed_jobs if job is not None} == job_ids
+    assert {job["tenant_id"] for job in claimed_jobs if job is not None} == {
+        tenant_a,
+        tenant_b,
+    }
+    for job in claimed_jobs:
+        assert job is not None
+        assert job["status"] == "validating"
+    with get_session_factory()() as session:
+        rows = (
+            session.query(DataImportJob).filter(DataImportJob.job_id.in_(job_ids)).all()
+        )
+        assert {row.lease_owner for row in rows} == {"rls-integration-worker"}
+        assert all(row.lease_expires_at > _now() for row in rows)

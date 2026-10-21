@@ -35,10 +35,10 @@ from app.db.models import (
 from app.db.tenant import privileged_session, scoped_session
 from app.domain.authorization import ExecutionContext
 from app.repositories.import_job_repository import (
+    ACTIVE_JOB_STATUSES,
     CLAIM_TARGET_STATUS,
     CLAIMABLE_JOB_STATUSES,
     DECISION_TO_STATUS,
-    IMPORT_JOB_STATUSES,
     WORKING_JOB_STATUSES,
     ImportJobLeaseLostError,
     ImportJobNotFoundError,
@@ -65,6 +65,7 @@ AUDIT_DETAIL_ALLOWED_KEYS = frozenset(
         "attempt_count",
         "error_code",
         "retryable",
+        "retry_scheduled",
         "error_codes",
         "batch_id",
         "job_id",
@@ -72,15 +73,6 @@ AUDIT_DETAIL_ALLOWED_KEYS = frozenset(
     }
 )
 STORE_ERROR_MESSAGE_LIMIT = 500
-TERMINAL_JOB_STATUSES = (
-    "validation_failed",
-    "rejected",
-    "published",
-    "cancelled",
-)
-ACTIVE_JOB_STATUSES = tuple(
-    status for status in IMPORT_JOB_STATUSES if status not in TERMINAL_JOB_STATUSES
-)
 
 
 def utc_now() -> datetime:
@@ -400,7 +392,7 @@ class PostgresImportJobRepository:
                         DataImportJob.status.in_(WORKING_JOB_STATUSES)
                         & or_(
                             DataImportJob.lease_expires_at.is_(None),
-                            DataImportJob.lease_expires_at < now,
+                            DataImportJob.lease_expires_at <= now,
                         )
                     ),
                 ),
@@ -456,10 +448,11 @@ class PostgresImportJobRepository:
             row.lease_owner = worker_id
             row.lease_expires_at = lease_expires_at
             row.started_at = row.started_at or now
-            session.commit()
-            session.refresh(row)
             value = _job_dict(row)
             value["claimed_from"] = previous_status
+            value["lease_owner"] = worker_id
+            value["lease_expires_at"] = lease_expires_at
+            session.commit()
             return value
 
     def renew_job_lease(self, job_id: UUID, worker_id: str) -> bool:
@@ -471,6 +464,7 @@ class PostgresImportJobRepository:
                     DataImportJob.job_id == job_id,
                     DataImportJob.lease_owner == worker_id,
                     DataImportJob.status.in_(WORKING_JOB_STATUSES),
+                    DataImportJob.lease_expires_at > now,
                 )
                 .values(
                     lease_expires_at=now + timedelta(seconds=IMPORT_JOB_LEASE_SECONDS)
@@ -531,11 +525,16 @@ class PostgresImportJobRepository:
         和任务状态一起消失，已发布快照保持原样。
         """
         with self._worker_session() as session:
-            self._leased_job(
+            leased_row = self._leased_job(
                 session, job_id=job_id, worker_id=worker_id, expected="publishing"
             )
+            lease_expires_at = leased_row.lease_expires_at
             try:
                 yield session
+                # Publication may outlive its lease while holding the row lock.
+                # Fence again at commit so an expired worker cannot publish.
+                if lease_expires_at is None or lease_expires_at <= utc_now():
+                    raise ImportJobLeaseLostError(job_id, status="publishing")
             except Exception:
                 session.rollback()
                 raise
@@ -621,6 +620,12 @@ class PostgresImportJobRepository:
                 ]
                 row.available_at = now + timedelta(seconds=backoff)
                 target = current
+                audit_action = (
+                    "validation_retry_scheduled"
+                    if current == "validating"
+                    else "publish_retry_scheduled"
+                )
+                retry_scheduled = True
             else:
                 target = (
                     "validation_failed" if current == "validating" else "publish_failed"
@@ -628,8 +633,28 @@ class PostgresImportJobRepository:
                 validate_job_transition(current, target)
                 row.status = target
                 row.finished_at = now
+                audit_action = target
+                retry_scheduled = False
             row.lease_owner = None
             row.lease_expires_at = None
+            self.append_audit_event_in_session(
+                session,
+                tenant_id=row.tenant_id,
+                actor_principal_id=worker_id,
+                action=audit_action,
+                target_type="import_job",
+                target_id=str(row.job_id),
+                outcome="failure",
+                job_id=row.job_id,
+                detail={
+                    "error_code": error_code,
+                    "retryable": retryable,
+                    "retry_scheduled": retry_scheduled,
+                    "previous_status": current,
+                    "status": target,
+                    "attempt_count": row.attempt_count,
+                },
+            )
             session.commit()
             return target
 
@@ -683,11 +708,13 @@ class PostgresImportJobRepository:
         worker_id: str,
         expected: str | None = None,
     ) -> DataImportJob:
+        now = utc_now()
         row = session.scalar(
             select(DataImportJob)
             .where(
                 DataImportJob.job_id == job_id,
                 DataImportJob.lease_owner == worker_id,
+                DataImportJob.lease_expires_at > now,
             )
             .with_for_update()
         )

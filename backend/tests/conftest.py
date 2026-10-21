@@ -20,6 +20,26 @@ os.environ.setdefault(
 )
 
 
+def postgres_unavailable(reason: str) -> None:
+    """Local offline runs may skip DB tests; the dedicated CI gate must fail closed."""
+    if os.getenv("REQUIRE_POSTGRES_TESTS") == "1":
+        pytest.fail(reason, pytrace=False)
+    pytest.skip(reason)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """The dedicated PostgreSQL gate must fail if any integration test skips."""
+    if os.getenv("REQUIRE_POSTGRES_TESTS") != "1":
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None and reporter.stats.get("skipped"):
+        reporter.write_line(
+            "PostgreSQL 集成门禁禁止 skip；请检查数据库、角色和测试前置条件。",
+            red=True,
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
 @pytest.fixture(autouse=True)
 def reset_cached_dependencies():
     from app.db.engine import reset_engine

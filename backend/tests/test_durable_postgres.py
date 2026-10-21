@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from conftest import postgres_unavailable
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select, text, update
 
@@ -98,7 +99,9 @@ def ensure_published_sample_snapshot(tenant_id: str) -> None:
 def durable_settings(monkeypatch: pytest.MonkeyPatch):
     database_url = os.getenv("TEST_COST_DATABASE_URL")
     if not database_url:
-        pytest.skip("未配置 TEST_COST_DATABASE_URL，跳过真实 PostgreSQL durable 测试。")
+        postgres_unavailable(
+            "未配置 TEST_COST_DATABASE_URL，无法运行真实 PostgreSQL durable 测试。"
+        )
     monkeypatch.setenv("COST_DATABASE_URL", database_url)
     monkeypatch.setenv("APP_VERSION", "durable-test")
     # 模型必须离线且确定性：Fixture 适配器不联网，并把“产品A”解析为 FG-001。

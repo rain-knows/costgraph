@@ -39,22 +39,30 @@ IMPORT_JOB_STATUSES: tuple[str, ...] = (
     "cancelled",
 )
 
-#: 只有这些状态允许被 Worker 领取并推进（规格第 4 节状态机）。
-#: ``publish_failed`` 是唯一的重试回边：已批准任务发布失败后保留租约语义，
-#: 可由下一次领取重新进入 ``publishing``；``validation_failed`` 不可重试。
+#: 失败重试留在工作状态并由 ``available_at`` 控制；失败终态不自动重新领取。
 CLAIMABLE_JOB_STATUSES: tuple[str, ...] = (
     "submitted",
     "approved",
-    "publish_failed",
 )
 
 #: 领取后需要进入的工作中状态；租约过期时可在同一状态内重试。
 WORKING_JOB_STATUSES: tuple[str, ...] = ("validating", "publishing")
 
+TERMINAL_JOB_STATUSES: tuple[str, ...] = (
+    "validation_failed",
+    "rejected",
+    "published",
+    "publish_failed",
+    "cancelled",
+)
+
+ACTIVE_JOB_STATUSES: tuple[str, ...] = tuple(
+    status for status in IMPORT_JOB_STATUSES if status not in TERMINAL_JOB_STATUSES
+)
+
 CLAIM_TARGET_STATUS: dict[str, str] = {
     "submitted": "validating",
     "approved": "publishing",
-    "publish_failed": "publishing",
 }
 
 ALLOWED_JOB_TRANSITIONS: dict[str, frozenset[str]] = {
@@ -65,7 +73,7 @@ ALLOWED_JOB_TRANSITIONS: dict[str, frozenset[str]] = {
     "approved": frozenset({"publishing"}),
     "rejected": frozenset(),
     "publishing": frozenset({"published", "publish_failed"}),
-    "publish_failed": frozenset({"publishing"}),
+    "publish_failed": frozenset(),
     "published": frozenset(),
     "cancelled": frozenset(),
 }
@@ -173,7 +181,7 @@ class ImportJobRepository(Protocol):
         ...
 
     def claim_next_job(self, worker_id: str) -> dict[str, Any] | None:
-        """领取新提交、已批准或发布失败待重试的任务。"""
+        """领取新提交或已批准的任务，以及退避到期的工作中任务。"""
         ...
 
     def renew_job_lease(self, job_id: UUID, worker_id: str) -> bool: ...

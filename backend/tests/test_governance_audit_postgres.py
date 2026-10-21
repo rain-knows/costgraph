@@ -5,6 +5,7 @@ import os
 from uuid import uuid4
 
 import pytest
+from conftest import postgres_unavailable
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import DBAPIError
 
@@ -19,7 +20,9 @@ from app.repositories.postgres_import_job_repository import (
 def audit_repository(monkeypatch: pytest.MonkeyPatch):
     database_url = os.getenv("TEST_COST_DATABASE_URL")
     if not database_url:
-        pytest.skip("未配置 TEST_COST_DATABASE_URL，跳过真实 PostgreSQL 审计测试。")
+        postgres_unavailable(
+            "未配置 TEST_COST_DATABASE_URL，无法运行真实 PostgreSQL 审计测试。"
+        )
     monkeypatch.setenv("COST_DATABASE_URL", database_url)
     reset_engine()
     tenant_id = f"audit-test-{uuid4().hex}"
