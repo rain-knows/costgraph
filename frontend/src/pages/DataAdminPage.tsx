@@ -6,7 +6,7 @@ import type { AppOutletContext } from '../components/AppShell'
 import { Badge, Button, PageHeader } from '../components/ui'
 import { formatDateTime } from '../lib/utils'
 
-type LoadState = 'loading' | 'ready' | 'empty' | 'error' | 'unavailable' | 'unauthorized'
+type LoadState = 'loading' | 'ready' | 'empty' | 'error' | 'unavailable' | 'unauthorized' | 'not_found'
 
 export function DataAdminPage() {
   const { period, me, meLoading, meError } = useOutletContext<AppOutletContext>()
@@ -52,6 +52,7 @@ export function DataAdminPage() {
     }).catch((reason: unknown) => {
       if (controller.signal.aborted) return
       if (reason instanceof ApiError && (reason.status === 403 || reason.code === 'data_management_access_denied')) setState('unauthorized')
+      else if (reason instanceof ApiError && reason.status === 404 && batchId) { setState('not_found'); setMessage('指定批次不存在，或不属于当前租户。') }
       else if (reason instanceof ApiError && reason.status === 503) { setState('unavailable'); setMessage(reason.message) }
       else { setState('error'); setMessage(reason instanceof Error ? reason.message : '读取数据治理信息失败') }
     })
@@ -69,6 +70,7 @@ export function DataAdminPage() {
   return <div>
     <PageHeader title="数据治理" actions={<Button variant="ghost" onClick={() => setReload((value) => value + 1)}>刷新</Button>} />
     {shownState === 'unauthorized' ? <StateNotice state="unauthorized" text="当前主体没有 data_management.read 权限。" /> : null}
+    {shownState === 'not_found' ? <StateNotice state="not_found" text={message} onRetry={() => navigate(`/data-admin?period=${period}&page=${page}`)} /> : null}
     {shownState === 'unavailable' ? <StateNotice state="unavailable" text={message || '数据治理服务暂不可用。'} onRetry={() => setReload((value) => value + 1)} /> : null}
     {shownState === 'error' ? <StateNotice state="error" text={message} onRetry={() => setReload((value) => value + 1)} /> : null}
     {shownState === 'loading' ? <StateNotice state="loading" text="正在读取当前租户的导入批次和发布快照。" /> : null}
@@ -102,6 +104,6 @@ export function DataAdminPage() {
 }
 
 function StateNotice({ state, text, onRetry }: { state: LoadState; text: string; onRetry?: () => void }) {
-  const role = state === 'error' || state === 'unauthorized' || state === 'unavailable' ? 'alert' : 'status'
-  return <section className="grid min-h-64 place-items-center border-b border-[var(--border-soft)] px-6" data-state={state} role={role}><div className="max-w-lg text-center"><h2 className="text-xl">{state === 'unauthorized' ? '无权访问数据治理' : state === 'unavailable' ? '数据治理服务暂不可用' : state === 'error' ? '数据读取失败' : state === 'loading' ? '正在读取数据治理信息' : '暂无导入数据'}</h2><p className="mt-2 text-sm text-[var(--fg-2)]">{text}</p>{onRetry ? <Button className="mt-4" onClick={onRetry}>重新读取</Button> : null}</div></section>
+  const role = state === 'error' || state === 'unauthorized' || state === 'unavailable' || state === 'not_found' ? 'alert' : 'status'
+  return <section className="grid min-h-64 place-items-center border-b border-[var(--border-soft)] px-6" data-state={state} role={role}><div className="max-w-lg text-center"><h2 className="text-xl">{state === 'unauthorized' ? '无权访问数据治理' : state === 'not_found' ? '批次不存在' : state === 'unavailable' ? '数据治理服务暂不可用' : state === 'error' ? '数据读取失败' : state === 'loading' ? '正在读取数据治理信息' : '暂无导入数据'}</h2><p className="mt-2 text-sm text-[var(--fg-2)]">{text}</p>{onRetry ? <Button className="mt-4" onClick={onRetry}>{state === 'not_found' ? '返回批次列表' : '重新读取'}</Button> : null}</div></section>
 }

@@ -87,11 +87,11 @@ describe('ImportJobDetailPage', () => {
     expect(screen.getByText('审批结论')).toBeInTheDocument()
   })
 
-  it('disables publish retry for publish_failed and explains the worker retry', async () => {
+  it('shows publish_failed as terminal without offering a retry', async () => {
     vi.mocked(importJobs.getImportJob).mockResolvedValue({ ...job, status: 'publish_failed', attempt_count: 2 })
     renderPage()
-    expect(await screen.findByRole('button', { name: '重试发布' })).toBeDisabled()
-    expect(screen.getByText(/由 Worker 在租约过期后自动重试（已尝试 2 次）/)).toBeInTheDocument()
+    expect(await screen.findByText('此任务已结束；当前没有人工重试入口。')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试发布' })).not.toBeInTheDocument()
   })
 
   it('treats a 403 response as unauthorized instead of an empty task', async () => {

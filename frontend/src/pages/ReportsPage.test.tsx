@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { listArtifacts, restoreArtifact, getArtifact } from '../api/artifacts'
+import { ApiError } from '../api/http'
 import type { ReportJson } from '../api/agent'
 import { finishedBatch } from '../test/costFixtures'
 import { formatChartMoney, ReportsPage } from './ReportsPage'
@@ -116,6 +117,12 @@ describe('ReportsPage v3', () => {
     expect(screen.getByText('六类制造成本单位对比')).toBeInTheDocument()
     expect(screen.getByText('制造成本差额明细')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: '成品外壳总成 六类制造成本周期对比' })).toBeInTheDocument()
+  })
+
+  it('shows an explicit not-found message for a missing report', async () => {
+    getArtifactMock.mockRejectedValueOnce(new ApiError('报表不存在', 404, 'artifact_not_found'))
+    render(<MemoryRouter initialEntries={['/reports/missing?period=2026-06']}><Routes><Route element={<Outlet context={{ period: '2026-06' }} />}><Route path="/reports/:artifactId" element={<ReportsPage />} /></Route></Routes></MemoryRouter>)
+    expect(await screen.findByText('报表不存在或已被移入回收站。')).toBeInTheDocument()
   })
 
   it('restores an artifact from the real trash view', async () => {

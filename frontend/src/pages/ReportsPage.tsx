@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowDownRight, ArrowUpRight, FileBarChart2, GitBranch, Presentation, RotateCcw, Scale, Search, Trash2, X } from 'lucide-react'
 import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { getArtifact, listArtifacts, restoreArtifact, trashArtifact, type ArtifactDetail, type ArtifactSummary } from '../api/artifacts'
+import { ApiError } from '../api/http'
 import type { ComparisonMetric } from '../api/agent'
 import type { AppOutletContext } from '../components/AppShell'
 import { axis, EChart, tooltip } from '../components/Charts'
@@ -158,7 +159,7 @@ function ReportDetail({ artifactId }: { artifactId: string }) {
     void getArtifact(artifactId).then((value) => {
       if (!controller.signal.aborted) setArtifact(value)
     }).catch((reason: unknown) => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '读取报表失败')
+      if (!controller.signal.aborted) setError(reason instanceof ApiError && reason.status === 404 ? '报表不存在或已被移入回收站。' : reason instanceof Error ? reason.message : '读取报表失败')
     }).finally(() => {
       if (!controller.signal.aborted) setLoading(false)
     })

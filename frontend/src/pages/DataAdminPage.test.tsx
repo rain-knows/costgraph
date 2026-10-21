@@ -74,6 +74,14 @@ describe('DataAdminPage', () => {
     expect(screen.queryByText('当前条件下没有数据')).not.toBeInTheDocument()
   })
 
+  it('shows a distinct not-found state for a missing batch', async () => {
+    setupSuccessfulApis()
+    vi.mocked(dataAdmin.getDataAdminBatch).mockRejectedValue(new ApiError('批次不存在', 404, 'batch_not_found'))
+    renderPage('/data-admin/missing-batch?period=2026-06')
+    expect(await screen.findByRole('alert')).toHaveAttribute('data-state', 'not_found')
+    expect(screen.getByText('指定批次不存在，或不属于当前租户。')).toBeInTheDocument()
+  })
+
   it('shows database 503 as unavailable and supports a no-data snapshot', async () => {
     setupSuccessfulApis()
     vi.mocked(dataAdmin.listDataAdminBatches).mockRejectedValue(new ApiError('数据库不可用', 503, 'database_unavailable'))

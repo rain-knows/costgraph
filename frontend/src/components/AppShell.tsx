@@ -3,7 +3,7 @@ import { Bot, Database, FileBarChart2, LayoutDashboard, LogOut, Menu, Moon, Scro
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { HealthStatus } from '../api/agent'
 import { getMe, type MeSummary, type PermissionId } from '../api/me'
-import { apiRequest } from '../api/http'
+import { ApiError, apiRequest } from '../api/http'
 import { clearAccessToken } from '../auth/tokenStore'
 import { hasPermission, requiredPermissionFor } from '../auth/permissions'
 import { cn } from '../lib/utils'
@@ -31,9 +31,10 @@ function Brand() {
   </div>
 }
 
-/** 按 permissions 过滤导航；权限摘要读取完成前先展示全部入口，避免导航闪成空列表。 */
+/** 权限摘要就绪后才显示导航，避免加载期间暴露不可访问的入口。 */
 function visibleNav(me: MeSummary | null, meLoading: boolean) {
-  return nav.filter((item) => meLoading || hasPermission(me?.permissions, item.permission))
+  if (meLoading || !me) return []
+  return nav.filter((item) => hasPermission(me.permissions, item.permission))
 }
 
 function Sidebar({ period, items, mobile = false, onClose }: { period: string; items: typeof nav; mobile?: boolean; onClose?: () => void }) {
@@ -56,6 +57,7 @@ export function AppShell() {
   const [me, setMe] = useState<MeSummary | null>(null)
   const [meLoading, setMeLoading] = useState(true)
   const [meError, setMeError] = useState(false)
+  const [meErrorStatus, setMeErrorStatus] = useState<number | null>(null)
   const [meReload, setMeReload] = useState(0)
   const params = new URLSearchParams(location.search)
   const requestedPeriod = params.get('period') ?? sessionStorage.getItem('costgraph-period') ?? import.meta.env.VITE_DEFAULT_PERIOD ?? '2026-06'
@@ -73,11 +75,12 @@ export function AppShell() {
     setMeLoading(true)
     setMeError(false)
     getMe(controller.signal)
-      .then((value) => { setMe(value); setMeError(false) })
-      .catch(() => {
+      .then((value) => { setMe(value); setMeError(false); setMeErrorStatus(null) })
+      .catch((reason: unknown) => {
         if (controller.signal.aborted) return
         setMe(null)
         setMeError(true)
+        setMeErrorStatus(reason instanceof ApiError ? reason.status : 500)
       })
       .finally(() => { if (!controller.signal.aborted) setMeLoading(false) })
     return () => controller.abort()
@@ -110,12 +113,16 @@ export function AppShell() {
   const runtimeReady = health?.runtime_ready === true
   const requiredPermission = requiredPermissionFor(location.pathname)
   const outletContext = { period, me, meLoading, meError } satisfies AppOutletContext
-  const routeState: { state: 'loading' | 'unavailable' | 'unauthorized'; title: string; detail: string } | null = requiredPermission === undefined
+  const routeState: { state: 'loading' | 'unavailable' | 'unauthorized' | 'error'; title: string; detail: string } | null = requiredPermission === undefined
     ? null
     : meLoading
       ? { state: 'loading', title: '正在读取当前主体权限', detail: '正在请求 /api/me 以确定可访问的页面与导航。' }
       : meError
-        ? { state: 'unavailable', title: '无法读取当前主体权限', detail: '权限摘要请求失败，页面内容暂不可用。' }
+        ? meErrorStatus === 401 || meErrorStatus === 403
+          ? { state: 'unauthorized', title: meErrorStatus === 401 ? '登录状态已失效' : '无法确认当前主体权限', detail: meErrorStatus === 401 ? '请重新登录后继续。' : '身份服务拒绝读取当前主体信息。' }
+          : meErrorStatus === 503
+            ? { state: 'unavailable', title: '身份服务暂不可用', detail: '权限摘要服务暂时不可用，请稍后重试。' }
+            : { state: 'error', title: '读取当前主体权限失败', detail: '权限摘要请求发生错误，请重新读取。' }
         : hasPermission(me?.permissions, requiredPermission)
           ? null
           : { state: 'unauthorized', title: '无权访问该页面', detail: `当前主体没有 ${requiredPermission} 权限。` }
@@ -136,7 +143,7 @@ export function AppShell() {
         <IconButton label={theme === 'light' ? '切换深色主题' : '切换浅色主题'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</IconButton>
       </header>
       <main>{routeState
-        ? <StatePanel state={routeState.state} title={routeState.title} detail={routeState.detail} onRetry={routeState.state === 'unavailable' ? () => { setMeError(false); setMeReload((value) => value + 1) } : undefined} />
+        ? <StatePanel state={routeState.state} title={routeState.title} detail={routeState.detail} onRetry={routeState.state === 'unavailable' || routeState.state === 'error' ? () => { setMeError(false); setMeReload((value) => value + 1) } : undefined} />
         : <Outlet context={outletContext} />}</main>
     </div>
   </div>

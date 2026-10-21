@@ -39,6 +39,28 @@ function renderShell(pathname: string) {
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('AppShell permissions', () => {
+  it('does not expose navigation while the permission summary is loading', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      if (String(input).includes('/api/me')) return new Promise(() => {})
+      return Promise.resolve(new Response(JSON.stringify({ runtime_ready: true }), { headers: { 'Content-Type': 'application/json' } }))
+    })
+    renderShell('/')
+    expect(screen.getByRole('navigation', { name: '一级导航' })).toBeEmptyDOMElement()
+    expect(await screen.findByRole('status')).toHaveTextContent('正在读取当前主体权限')
+  })
+
+  it.each([
+    [401, '登录状态已失效'],
+    [403, '无法确认当前主体权限'],
+    [503, '身份服务暂不可用'],
+  ])('preserves /api/me HTTP %i semantics', async (status, message) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => String(input).includes('/api/me')
+      ? new Response(JSON.stringify({ detail: { code: 'request_failed', message: '请求失败' } }), { status, headers: { 'Content-Type': 'application/json' } })
+      : new Response(JSON.stringify({ runtime_ready: true }), { headers: { 'Content-Type': 'application/json' } }))
+    renderShell('/')
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
   it('hides navigation entries the principal cannot access', async () => {
     mockBackend(viewer)
     renderShell('/')

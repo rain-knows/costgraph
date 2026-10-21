@@ -166,10 +166,7 @@ export function ImportJobDetailPage() {
         {job.status === 'publish_failed' ? <div className="mt-4 max-w-2xl">
           <Badge tone="danger">发布失败</Badge>
           <p className="mt-2 text-sm">发布失败，已发布快照保持不变；旧快照仍是对外的成本事实来源。</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled>重试发布</Button>
-            <span className="meta">由 Worker 在租约过期后自动重试（已尝试 {job.attempt_count} 次）。</span>
-          </div>
+          <p className="meta mt-2">此任务已结束；当前没有人工重试入口。</p>
         </div> : null}
 
         {job.status === 'published' && job.published_batch_id ? <p className="mt-3 text-sm">已发布批次：<Link className="underline" to={`/data-admin/${encodeURIComponent(job.published_batch_id)}?period=${period}`}>{job.published_batch_id}</Link></p> : null}
