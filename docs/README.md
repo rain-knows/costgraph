@@ -25,6 +25,7 @@
 | 本次迁移阶段、状态和证据 | [迁移执行记录](plans/agent-demo-to-costgraph.md) | 仅在状态或证据变化时更新 |
 | 二期批次 1 执行契约（唯一事实来源） | [二期批次 1 权威规格](plans/data-governance-phase2-batch1-spec.md) | 仅在批次范围冻结变化时更新 |
 | 数据管理面板与权限治理的批次划分 | [数据管理面板与权限治理](plans/data-management-and-permission-governance.md) | 仅在批次完成或范围变化时更新 |
+| 生产接入、运行保障与长期演进 | [生产准备与长期演进计划](plans/production-readiness.md) | 仅在优先级、验收门槛或未验证项变化时更新 |
 
 界面设计另以根 [`DESIGN.md`](../DESIGN.md) 为入口；上游设计包 provenance 见
 [`design-systems/ibm/UPSTREAM.md`](../design-systems/ibm/UPSTREAM.md)。

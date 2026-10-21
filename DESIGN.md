@@ -81,25 +81,26 @@ floating section card.
   Job detail actions follow the server-returned `status`; approval and
   cancellation controls appear only where the state machine permits them and
   only for principals holding the matching permission.
-- A failed publish is never presented as a recoverable client action. The
-  surface states that the previously published snapshot is unchanged and that
-  the Worker retries under its own lease, and the retry control is disabled
-  rather than pointing at an endpoint that does not exist.
+- A failed publish is a terminal state and is never presented as a recoverable
+  client action. The surface states that the previously published snapshot is
+  unchanged; a future manual retry requires an explicit authorized action.
 - Authentication is part of the interaction truth. Staging and production obtain
   an access token only through OIDC Authorization Code + PKCE; local `demo` may
   use the explicitly enabled fixed development token so the workspace can start
   without an IdP. Both paths keep the token in memory and never persist it to
   `localStorage`, `sessionStorage`, cookies, or the URL.
-- `401`, `403`, and `404` are three distinct surfaces, never a shared empty
-  state: `401` clears the in-memory token and returns to sign-in, `403` renders
-  the unauthorized panel while keeping the session, and `404` renders the
-  not-found panel. Hiding an entry the principal cannot use is navigation
-  hygiene, not authorization; the server remains the authority.
+- `401`, `403`, `404`, and `503` retain distinct meaning: `401` clears the
+  in-memory token and shows the expired sign-in state, `403` renders the
+  unauthorized panel while keeping the session, `404` renders the not-found
+  panel, and `503` shows service unavailable. Hiding an entry the principal
+  cannot use is navigation hygiene, not authorization; the server remains the
+  authority.
 - Navigation entries are derived from the server-returned `permissions` of
   `GET /api/me`. Direct navigation to a route the principal cannot access
   renders the unauthorized panel instead of an empty table. While permissions
-  are loading the surface shows loading, and when they cannot be read it shows
-  unavailable; neither may be shown as "no data".
+  are loading the navigation is hidden and the page shows loading; when they
+  cannot be read the page preserves the HTTP error meaning. These states may
+  not be shown as "no data".
 - Agent progress is driven by the canonical Runtime lifecycle and ordered SSE
   events. Animation may clarify active progress but must stop for terminal
   states and respect `prefers-reduced-motion`.

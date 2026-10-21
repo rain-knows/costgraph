@@ -43,11 +43,11 @@
 - Agent 输入边界：唯一产成品零件与期间；报告汇总该期间的全部最终批次。
 - 数据隔离：运行数据按 `tenant_id + principal_id`，成本事实按 `tenant_id + published batch + data_scope`。
 
-## 本轮验收清单
+## 2026-10-20 历史验收记录
 
-完成实现后，将实际命令、通过数、skip 和环境限制补到本节；一种测试不能替代另一种。下表汇总当前可复核的本机与专用测试库证据。
+以下数字与结果仅记录 2026-10-20 当时的验收，不代表 2026-10-21 审阅修复后的验证结果；一种测试不能替代另一种。
 
-| 检查 | 当前证据 |
+| 检查 | 当时证据 |
 | --- | --- |
 | 后端完整 Pytest | 专用 `costgraph_test`：`288 passed, 0 skipped, 2 warnings`；未配置测试库时本地：`258 passed, 30 skipped` |
 | Ruff lint 与 format | `All checks passed!`、`128 files already formatted`（`scripts\check_python_quality.ps1`） |

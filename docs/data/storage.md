@@ -21,7 +21,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - Alembic 是 schema 的唯一创建入口：`20260907_0001` 是迁移图根节点 baseline，`20260917_0002`
   在其上叠加导入任务表与不可变快照键改造；`20260918_0003` 新增 `iam_principal_roles`、
   `iam_data_scopes` 并扩展 `governance_audit_events` 的动作约束；`20260920_0004` 创建受限应用角色
-  `costgraph_app` 并为全部业务表启用行级安全；`20260921_0005` 修正父表继承策略并配置 Worker 调度角色。
+  `costgraph_app` 并为全部业务表启用行级安全；`20260921_0005` 修正父表继承策略并创建 Worker 调度角色；`20261021_0006` 为 Worker 仅在两张调度表增加跨租户策略；`20261021_0007` 扩展审计动作以记录重试排期与失败原因。
   `backend/alembic/versions/` 允许继续追加增量迁移，
   但必须能从 baseline 线性到达且只有一个 head。API 和 Worker 启动时不自动创建业务表，也不调用
   checkpoint saver 的 setup。
@@ -30,7 +30,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
   再把主子表外键组合化；实现顺序为“drop 旧外键 -> drop 旧唯一约束 -> drop 旧主键 -> 建新唯一约束
   -> 建新主键 -> 建新外键”。
 - `dev.ps1` 只负责启动 API、独立 Worker 和 Vite，并等待 `/api/readyz`；它不执行 Alembic、创建表或清理数据库，启动阶段进程提前退出时会立即报告对应日志。
-- 导入任务由 Worker 使用短事务领取租约；发布失败允许有限次数的自动重试。成本快照插入、旧快照退役、任务 `published` 状态和成功审计在同一 PostgreSQL 事务中提交，任一步失败则整体回滚。
+- 导入任务由 Worker 使用短事务领取租约；续租与持久化写入都要求 owner 匹配且 `lease_expires_at > now`，发布事务提交前再次 fencing。可重试错误留在 `validating`/`publishing` 并按 `available_at` 退避；不可重试错误或耗尽次数进入 `validation_failed`/`publish_failed` 终态。成本快照插入、旧快照退役、任务 `published` 状态和成功审计在同一 PostgreSQL 事务中提交，任一步失败则整体回滚。
 - `/api/readyz` 校验数据库连通、数据库 revision 等于代码 head、四个 schema 的必需表和列存在，以及 Worker 心跳。使用 SQLAlchemy Inspector 按 schema 批量反射列定义；缺表或缺列返回 `checks.alembic=schema_mismatch`，服务端日志记录缺失对象。此检查不比较列类型、索引和约束，也不代替 Alembic。任一项失败时 Runtime 不接收新 Run。
 
 ## 读取与所有权边界
@@ -39,7 +39,7 @@ API、Worker、会话、成本事实、checkpoint 和 Artifact 全部使用同�
 - 权限与数据范围只来自 `cost_data.iam_principal_roles`（租户内角色）与 `cost_data.iam_data_scopes`（零件/期间范围）；两张表以 `(tenant_id, principal_id)` 为主键，角色取值由 `ck_iam_principal_roles_known` 约束锁定为四个角色。数据范围为空集表示未被收窄。
 - 租户隔离有两层：Repository 的 `WHERE tenant_id = ...` 是第一层；数据库 RLS 是第二层。RLS 策略以 `current_setting('app.tenant_id', true)` 为唯一判据，未设置时返回 0 行（fail-closed），不存在“缺省租户”的越权路径。RLS 必须能独立拦住漏写 `tenant_id` 的查询，不能与仓储层互相替代。
 - RLS 实现约束：`20260920_0004` 对带 `tenant_id` 的 15 张表直接比较该列；`agent_runtime.messages`、`agent_run_events`、`audit_traces`、`agent_workers` 没有该列，改为经父表推导（分别经 `conversations.conversation_id`、`agent_runs.run_id` 和 `agent_workers.current_run_id`）。策略使用 `ENABLE` 而非 `FORCE`：表所有者（Alembic 与受控运维连接）不受策略约束，受限应用角色 `costgraph_app` 必须写入 `app.tenant_id` 才能看到本租户数据。因此 **API 必须以 `costgraph_app` 连接才享受 RLS**；以表所有者连接时策略完全不生效，只剩 Repository 一层。二者的接线与分工见 [运行手册](../operations/runbook.md)。
-- 验证状态：真实数据库上的隔离与持久化路径已实测。在专用 `costgraph_test` 上执行全量后端测试为 `288 passed`（0 skipped）；其中 `test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_import_jobs_postgres.py`（17）共 31 个真实 PostgreSQL 用例通过，包含最后一次租约领取后崩溃的失败终态。未配置 `TEST_COST_DATABASE_URL` 时，本地离线全量为 `258 passed, 30 skipped`。
+- 验证记录：此前文档记录过专用 `costgraph_test` 的全量测试和离线测试数字，但它们是历史结果，不代表本轮修改已验证。2026-10-21 的 PostgreSQL 集成测试本地未运行；CI 通过独立专用 job 执行数据库测试，`REQUIRE_POSTGRES_TESTS=1` 时缺少数据库、数据库不可达或 `costgraph_app` 角色缺失均失败而非 skip。
 - 前置条件：`set_tenant()` 必须在事务开始前生效，仓储必须在会话上下文内把 ORM 行映射成 dict。`release_session()` 先 `expunge_all()` 再 `rollback()`，因为 `rollback()` 会把身份映射实例标记为 expired，会话关闭后的属性访问会抛 `DetachedInstanceError`。
 - 租户上下文的唯一入口是 `backend/app/db/tenant.py`：`set_tenant()` 写 `app.tenant_id`，`release_session()` 先回滚再清空该设置后关闭连接；租户用会话级 `set_config(..., false)` 写入，`rollback()` 不会清除它，所以 RESET 失败时必须 `invalidate()` 作废物理连接，不能把可能仍带旧租户的连接还给连接池。禁止在依赖中用 ContextVar 传递租户——FastAPI 同步依赖运行在线程池的上下文拷贝中，设置无法回传到 endpoint。
 - 导入任务 Repository 复用同一 PostgreSQL 工厂：任务与审计按租户隔离，审计只追加。审计表由 `trg_governance_audit_events_append_only` 触发器拦下任何 UPDATE/DELETE，测试清理需显式禁用触发器。导入载荷存在本地内容寻址对象存储（默认 `IMPORT_OBJECT_STORE_ROOT`，缺省为系统临时目录下 `costgraph-import-objects`），数据库只存 `source_object_key`/`source_object_size`/`source_object_sha256`；`object_key` 由内容 SHA-256 派生，读回时重新校验摘要。

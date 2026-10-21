@@ -139,7 +139,9 @@
 
 允许的 `action` 取值由 `ck_governance_audit_events_action` 约束：`submitted`、`validated`、
 `validation_failed`、`approved`、`rejected`、`publishing`、`published`、`publish_failed`、
-`cancelled`、`iam.roles_updated`、`iam.scope_updated`。
+`cancelled`、`validation_retry_scheduled`、`publish_retry_scheduled`、
+`iam.roles_updated`、`iam.scope_updated`。失败与重试排期事件的 `detail` 仅记录错误码、
+状态、`retryable`、`retry_scheduled` 与尝试次数，不保存异常文本或载荷。
 
 审计事件只追加：`cost_data.governance_audit_events` 上的触发器拒绝 `UPDATE`/`DELETE`；
 接口永不返回访问令牌、数据库连接串或导入原始载荷。

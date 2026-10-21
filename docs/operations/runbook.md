@@ -47,7 +47,9 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests -q -rs
 目标为 `0 skipped`。目标库必须可写且**不要**指向共享开发库：`upgrade head` 会创建
 `costgraph_app` 角色并给表加策略，属于改变环境的操作。
 
-当前运行证据：在专用 `costgraph_test` 上执行 `upgrade head` 后全量 `pytest` 为 `288 passed`（0 skipped），其中 `test_rls_postgres.py`（6）、`test_data_admin_postgres.py`（3）、`test_durable_postgres.py`（3）、`test_governance_audit_postgres.py`（2）、`test_import_jobs_postgres.py`（17）共 31 个真实库用例全部通过，策略的 fail-closed、跨租户拦截、导入发布事务和最后一次租约崩溃终态已得到实测。
+历史运行记录曾报告专用 `costgraph_test` 全量通过；该记录不是本轮验证结果。2026-10-21 本机未配置
+`TEST_COST_DATABASE_URL` 且 5432 端口无 PostgreSQL 服务，本轮真实库集成尚未运行。更新后的 CI
+单独运行 PostgreSQL 集成 job，并以 `REQUIRE_POSTGRES_TESTS=1` 禁止缺配置、连接失败或缺角色时 skip。
 
 `OIDC_TENANT_CLAIM`（默认 `tenant_id`）、`OIDC_ROLES_CLAIM`（默认 `roles`）、
 `OIDC_JWKS_CACHE_SECONDS`（默认 600）与 `OIDC_LEEWAY_SECONDS`（默认 30）可按身份提供方调整。
@@ -82,11 +84,11 @@ staging/production 身份只来自 OIDC，没有配置主体：
 
 ## 空库迁移与导入
 
-迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20260921_0005`。
+迁移链以 `20260907_0001_costgraph_baseline.py` 为根节点，当前 head 为 `20261021_0007`。
 baseline 直接定义批次成本 v2，不提供旧产品期间 schema 的升级或数据转换；增量迁移
 `20260917_0002` 新增导入任务与治理审计表，并把 `batch_id` 入键改造为不可变快照；
 `20260918_0003` 新增 IAM 主体角色/数据范围两张表，并扩展审计动作集合；
-`20260920_0004` 启用租户级 RLS，`20260921_0005` 修正父表继承策略并配置 Worker 调度角色。
+`20260920_0004` 启用租户级 RLS，`20260921_0005` 修正父表继承策略并创建 Worker 调度角色；`20261021_0007` 为该角色补充两张调度表的 RLS 策略。
 已经运行旧 baseline 的开发环境应新建专用空库并修改 `backend/.env` 的 `COST_DATABASE_URL`，
 然后执行下述迁移与样例导入；旧库保留供操作者另行处置。也可在操作者显式授权删除后重建原专用数据库。
 `dev.ps1`、API 和 Worker 均不得静默清库或自动建表。
@@ -108,7 +110,7 @@ Push-Location backend
 Pop-Location
 ```
 
-`alembic current` 必须输出 `20260921_0005 (head)`。API、Worker 和 `dev.ps1` 都不执行 Alembic。
+`alembic current` 必须输出 `20261021_0007 (head)`。API、Worker 和 `dev.ps1` 都不执行 Alembic。
 
 ## 提交导入任务与验证
 
@@ -228,7 +230,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/readyz
 
 `dev.ps1` 兼容 Windows PowerShell 5.1 与 `pwsh`；启动期间会监测新进程，若 API、Worker 或 Vite 在健康检查完成前退出，会立即返回并附对应错误日志末尾。
 
-`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。当前 head 为 `20260921_0005`；`alembic current` 必须显示该 revision，重复执行 `upgrade head` 不会修复历史库中与实际模型不一致的表结构。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
+`dev.ps1 status` 单独显示 Runtime 的 `READY/NOT READY`，进程 UP 不代表成本数据可用。`readyz.checks.alembic=schema_mismatch` 表示实际库缺少当前模型要求的表或列，`dev.ps1 logs` 的后端错误日志会列出缺失对象。当前 head 为 `20261021_0007`；`alembic current` 必须显示该 revision，重复执行 `upgrade head` 不会修复历史库中与实际模型不一致的表结构。按“空库迁移与导入”切换到新库后执行 `dev.ps1 restart`，再验证下面的黄金批次 API。
 
 `livez` 只检查进程，`readyz` 检查数据库、Alembic head、必需表和列以及 Worker 心跳。只有 `runtime_ready=true` 才能创建持久化 Run；健康检查不会调用 DeepSeek，也不校验列类型、索引和约束或是否已发布成本快照。
 
@@ -269,7 +271,7 @@ git diff --check
 
 `check_docs_sync.ps1` 默认只比较本工作树未提交改动，因此本地跑它必须保留工作区改动。CI 在干净检出上运行，此时它读取 `DOCS_SYNC_BASE_REF`（PR 基分支 SHA 或推送前 SHA）改为比较 `ref...HEAD`；首次推送或手动触发时该 ref 无法解析，脚本会警告并退回本地 diff 行为，不因基准缺失而失败。同一门禁由 `.github/workflows/ci.yml` 的 `docs` job 在 windows-latest 上执行。
 
-CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + 生产构建与 bundle 门禁），windows-latest 上跑文档同步与 `git diff --check`。后端 job 使用隔离的 PostgreSQL 16 service，先执行 `alembic upgrade head`，再设置 `TEST_COST_DATABASE_URL` 运行真实集成测试；本机未配置该变量时为 `258 passed, 30 skipped`。专用 `costgraph_test` 上的全量结果为 `288 passed`（0 skipped），覆盖 31 个 PostgreSQL 集成用例。
+CI 分为后端离线、PostgreSQL 集成、前端和文档四个 job。离线测试显式排除真实数据库测试文件；集成 job 使用隔离的 PostgreSQL 16 service，先执行 `alembic upgrade head`，再设置 `TEST_COST_DATABASE_URL` 与 `REQUIRE_POSTGRES_TESTS=1` 运行数据库用例。集成模式下缺失配置、数据库不可达、角色缺失或任意测试 skip 都会使 job 失败。2026-10-21 离线测试为 `257 passed, 0 skipped, 2 warnings`；本轮 PostgreSQL 集成未运行，历史全量数字不作为当前证据。
 
 - 导入测试覆盖未知费用代码、孤立引用、环路、跨快照、单位不一致和超量领用。
 - 导入任务测试覆盖状态机全部合法/非法迁移、幂等提交、重复快照返回已有任务、取消、租约过期、重试退避、审批与发布事务原子性、新旧快照并存、跨租户隔离，以及审计不可修改且不含载荷。
@@ -277,7 +279,7 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 - 成本测试覆盖多投入、部分领用、同批次分流、不良成本承接、全量领用尾差、三视图恒等式和黄金结果。
 - PostgreSQL 集成覆盖发布、数据范围、owner 隔离、Run 幂等、单会话单活跃、SSE 恢复、取消、租约接管、checkpoint 恢复和 finalizing 原子提交。未配置 `TEST_COST_DATABASE_URL` 导致的 skip 必须单独报告。
 - 离线 Agent/Eval 必须覆盖零件与期间澄清、Report/Artifact `3.0`、`presentation/period_comparison` 两种样式、`report_generation` 能力路由和四张表 lineage。Fixture 结果不能替代真实 DeepSeek。
-- 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态，并覆盖导入任务列表与详情（审批、拒绝原因、取消、校验错误分页、发布失败重试说明）、提交向导（非法载荷不发请求、幂等重复分支）、IAM（角色与范围保存、期间起止拦截）与审计查询（结果徽章、筛选写入 URL）。
+- 前端测试覆盖三页签、URL 状态、批次跳转、共享节点引用、来源记录及加载/空/错误/无权限状态，并覆盖 `/api/me` 401/403/503、权限加载导航、报表与治理批次 404、导入任务列表与详情（审批、拒绝原因、取消、校验错误分页、发布终态）、提交向导（非法载荷不发请求、幂等重复分支）、IAM（角色与范围保存、期间起止拦截）与审计查询（结果徽章、筛选写入 URL）。
 - 生产构建必须通过 bundle 门禁，初始 JS 小于 500 KB；页面与 ECharts 保持路由级懒加载。
 - 浏览器验收覆盖成本页、批次详情以及展示型/周期对比报表的桌面/移动、浅/深主题；对比报表必须清晰标注基期与目标期，并在窄屏保留可横向查看的精确数值表，不得出现表头错位、文字溢出或遮挡。展示型报表可用仓库根目录的 `scripts/verify_reports_browser.ps1` 执行真实 Chromium CDP 验收；脚本输出 `.pi/goals/evidence/reports-browser/result.json` 和四种状态截图，并检查真实 ECharts canvas、横向溢出、报表关键区块和数量小数显示。本地没有 IdP 时必须显式传入 `-LocalDemoAuth`，该开关只发送固定 demo Bearer 令牌；staging/production 不得使用它。
 
@@ -287,7 +289,7 @@ CI 分三个 job：ubuntu 上跑后端（Ruff + Pytest）与前端（Vitest + �
 
 1. 先查 `/api/health` 和 `/api/readyz` 的 database、migration、worker 与 `runtime_ready`。
 2. 确认连接配置存在但不要打印秘密；检查 `alembic current`、8000/5173 端口和 `dev.ps1 logs`。
-3. 检查当前 `published` 导入批次、导入任务状态（`submitted/validating/approval_pending/approved/publishing/published/publish_failed`）、错误码和四类记录计数；旧 schema 数据库不能通过重复执行同 revision 的 `upgrade head` 转换。等待审批的任务不会发布；`publish_failed` 只允许重试发布，不回滚旧快照。
+3. 检查当前 `published` 导入批次、导入任务状态（`submitted/validating/approval_pending/approved/publishing/published/publish_failed`）、错误码和四类记录计数；旧 schema 数据库不能通过重复执行同 revision 的 `upgrade head` 转换。等待审批的任务不会发布；`publish_failed` 是终态，瞬时故障只在工作状态按 `available_at` 退避；发布失败不回滚旧快照。
 4. 检查完工批次所属期间、追溯 DAG、领用总量、单位和 48 项费用代码。
 5. 检查服务端 tenant、principal 和 data scope；最终批次及其整条上游追溯链必须同时可见。
 6. 检查 Run 状态、attempt、可用时间、租约 owner/过期时间和最后事件 ID；有效租约期间不要手工重复执行。

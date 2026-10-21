@@ -27,14 +27,15 @@ agent run（既有路径，未被导入任务重构），一条处理数据导�
   `validating`/`publishing` 行上用 `FOR UPDATE SKIP LOCKED` 加行锁，取最早 `created_at` 的一条；
   同时递增 `attempt_count`、写入 `lease_owner`/`lease_expires_at`、首次写入 `started_at`。
 - **状态推进**：`submitted` 领取即转 `validating`；`approved` 领取即转 `publishing`。
-- **租约与心跳**：租约时长 `IMPORT_JOB_LEASE_SECONDS = 90` 秒；任务执行期间后台线程每
+- **租约与心跳**：租约时长 `IMPORT_JOB_LEASE_SECONDS = 90` 秒；续租与每次 Worker 写入均要求
+  `lease_expires_at > now`，过期即失去写权限，即使尚无其他 Worker 接管。任务执行期间后台线程每
   `AGENT_RUN_HEARTBEAT_SECONDS` 调用 `renew_job_lease()` 延长，更新条件是
-  `lease_owner == worker_id AND status IN ('validating','publishing')`。续租失败或返回零行表示租约丢失，
+  `lease_owner == worker_id AND status IN ('validating','publishing') AND lease_expires_at > now`。续租失败或返回零行表示租约丢失，
   Worker 放弃本任务（`ImportJobLeaseLostError`），由其他 Worker 在租约过期后接管。
 - **重试退避**：可重试失败（数据库/对象存储瞬时故障）不改状态，只把 `available_at` 推后
   `RETRY_BACKOFF_SECONDS = (1, 5, 30)`（按 `attempt_count` 取上限）并释放租约。不可重试失败
   （载荷、完整性、`object_key` 语义错误）转入终态：校验阶段转 `validation_failed`，发布阶段转
-  `publish_failed`。可重试故障最多执行 4 次（含首次领取）；达到上限后也进入对应失败终态，
+  `publish_failed`。`publish_failed` 是终态，不会自动重新领取，也没有人工重试接口。可重试故障最多执行 4 次（含首次领取）；达到上限后也进入对应失败终态，
   不再重新领取。若 Worker 在最后一次领取后崩溃，下一次租约回收会补写失败终态和脱敏审计。
 - **失败分类**：`classify_import_job_exception()` 把异常映射为 `(retryable, error_code)`；
   `ImportObjectStoreError` 不可重试，`SQLAlchemyError`/`OSError` 可重试，载荷解码错误不可重试。
@@ -53,9 +54,7 @@ agent run（既有路径，未被导入任务重构），一条处理数据导�
 完成或异常退出时通过 `release_session()` 摘除身份映射、回滚、清空该设置并关闭连接。Worker 不重新解析客户端
 身份，也不从环境变量推导租户：租户和主体全部来自已固化的 Run / Import Job 行。
 
-Worker 以 `costgraph_worker` 角色连接（`backend/alembic/versions/20260921_0005_fix_rls_parent_inheritance.py`
-创建），该角色被允许跨租户读取 `cost_data.data_import_jobs` 与 `agent_runtime.agent_runs`
-两张调度表；其余表的策略仍然生效。因此“跨租户领取”不能变成跨租户查询。
+Worker 运行路径通过受控表所有者连接完成跨租户调度与多表发布。`costgraph_worker` 调度角色及其两张表的跨租户 RLS 策略分别由 `20260921_0005` 和 `20261021_0006` 创建，并由 PostgreSQL 集成测试验证；失败原因和重试排期由 `20261021_0007` 写入审计；Worker 领取后仍以任务行固化的 `tenant_id` 注入业务会话。
 
 `release_session()` 必须先 `expunge_all()` 再 `rollback()`：`rollback()` 会把身份映射
 实例标记为 expired，而仓储习惯在会话关闭后把 ORM 行映射成 dict，后置属性访问会抛

@@ -178,5 +178,6 @@ Worker 对瞬时故障最多执行 4 次（含首次领取），使用 `availabl
 任务详情的可用动作严格由服务端返回的 `status` 与主体权限共同决定：只在
 `approval_pending` 且持有 `data_import.approve` 时出现审批与拒绝（拒绝必须填原因）；
 只在 `submitted`/`validating`/`approval_pending` 且持有 `data_import.submit` 时出现取消；
-`publish_failed` 没有客户端重试接口，页面只说明已发布快照保持不变与 Worker 自动重试计数。
+`publish_failed` 是终态且没有客户端重试接口，页面说明已发布快照保持不变；自动重试仅发生在
+`publishing` 工作状态内，按 `available_at` 退避。未来人工重试必须通过受权限控制的显式动作。
 页面不展示 `payload`、不提供回滚与删除、不在前端重算金额。

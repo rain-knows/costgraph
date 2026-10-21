@@ -239,7 +239,7 @@ approval_pending -> approved | rejected | cancelled
 approved         -> publishing
 rejected         -> (终态)
 publishing       -> published | publish_failed
-publish_failed   -> publishing            (同一已批准任务重试)
+publish_failed   -> (终态；当前实现不提供人工重试接口)
 published        -> (终态)
 cancelled        -> (终态)
 ```
@@ -278,7 +278,7 @@ cancelled        -> (终态)
 
 - 使用数据库租约：`FOR UPDATE SKIP LOCKED` + `lease_owner`/`lease_expires_at` + 心跳延长 + `attempt_count`/`available_at` 重试退避。
 - `status='submitted'` 领取后进入 `validating`，调用 `validate_payload()`；成功转 `approval_pending`，失败转 `validation_failed` 并写错误行 + 审计。
-- `status='approved'` 领取后进入 `publishing`，调用 `publish_validated_snapshot()`；成功转 `published`（并写 `published_batch_id`、旧快照转 `superseded`），失败转 `publish_failed`。
+- `status='approved'` 领取后进入 `publishing`，调用 `publish_validated_snapshot()`；成功转 `published`（并写 `published_batch_id`、旧快照转 `superseded`），不可重试失败或耗尽重试次数转终态 `publish_failed`。瞬时故障留在 `publishing` 并由 `available_at` 退避，不经 `publish_failed` 自动重试。
 - 校验失败任务不可查询为成本事实；未完成审批的任务不可发布。
 - 旧 published 快照只有在新快照事务提交后才变 `superseded`。
 - 已存在 `RuntimeAgentWorker` 注册表可复用；如需新方法，放在 import-job 专属 repository，不要在 `run_repository.py`（54KB，高风险）里大改。

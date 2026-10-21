@@ -13,12 +13,13 @@ Worker: submitted -> validating
 Worker: approved -> publishing
   -> publish_validated_snapshot 单事务：四类事实 + 确定性卷积投影
      + 新 published 批次 + 旧 published 转 superseded + 审计
-  -> 成功 -> published；失败整体回滚 -> publish_failed（保留旧快照）
+  -> 成功 -> published；失败整体回滚 -> publish_failed（终态，保留旧快照）
 应用只读当前 published 快照
 ```
 
 JSON 是导入输入，不是应用请求的 Repository。HTTP 只创建任务或改变状态；校验、投影生成与发布
 全部由 Worker 完成。相同租户 + 幂等键，或相同租户 + 来源系统 + 快照哈希 + 规则版本，都复用已有任务。
+可重试瞬时故障在 `validating`/`publishing` 工作状态内按 `available_at` 退避；不可重试故障进入失败终态。
 事实与成本投影在同一事务发布，任一投影失败都会回滚且完整保留旧发布快照；发布失败没有回滚接口。
 `batch_id` 是五张成本事实表主键的一部分，因此每个批次是不可变快照，同一逻辑 ID 可以跨批次重复。
 所有涉及投影的 join 必须额外带 `batch_id` 谓词。导入目标始终是独立 CostGraph PostgreSQL 数据库。

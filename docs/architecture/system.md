@@ -66,7 +66,7 @@ load conversation context -> policy gate -> select route
 - `effective_capabilities = requested ∩ role_permissions ∩ server_allowlist`。
 - 主体身份在运行边界绑定：Run 创建时固化 `principal_id`、`tenant_id`、`roles` 与 `data_scope`；staging/production 的主体来自 OIDC 访问令牌并与本地成员关系求交集，本地 demo 只允许显式固定开发主体。Worker 只用该快照，不重新解析客户端身份。`RuntimeRunRequest.principal` 是必填字段，不存在匿名主体。从状态恢复上下文时 `execution_context_from_state()` 重新推导授权，只有传入 `authoritative_principal` 才做身份一致性校验（包括 `data_scope`）；API 传当前主体，Worker 传 Run 中固化的主体。
 - 每个 `batch_id` 是不可变快照：成本事实与投影表把批次纳入主键，同一逻辑 ID 不再跨批次覆盖；旧 `published` 快照只在新快照事务提交后变为 `superseded`。
-- 导入任务状态机固定为 `submitted -> validating -> validation_failed | approval_pending -> approved | rejected -> publishing -> published | publish_failed`；`submitted`、`validating`、`approval_pending` 可取消，发布失败保留原已发布快照并允许同一已批准任务重试，不提供回滚接口。
+- 导入任务状态机固定为 `submitted -> validating -> validation_failed | approval_pending -> approved | rejected -> publishing -> published | publish_failed`；`submitted`、`validating`、`approval_pending` 可取消。可重试故障留在工作状态并按 `available_at` 退避；`publish_failed` 是终态，发布失败保留原已发布快照，不提供隐式重试或回滚接口。
 - HTTP 导入接口只创建任务或改变状态；校验、投影生成和发布全部由 Worker 在单事务中完成，未完成审批的任务不可发布。
 - 所有金额使用 Python `Decimal` 计算；模型文本和前端计算不能覆盖结构化金额。
 - 成本读取匹配租户、当前 `published` 快照、产成品零件、期间和服务端数据范围。

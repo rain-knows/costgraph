@@ -1,6 +1,6 @@
 # 数据/PostgreSQL 数据字典
 
-最终结构以 `backend/app/db/models.py` 与 Alembic 迁移链（baseline `20260907_0001` + 增量至当前 head `20260921_0005`）为准。时间使用 `TIMESTAMPTZ`，金额使用 `NUMERIC(18,2)`，数量和工时使用 `NUMERIC(18,4)`，追溯载荷使用 `JSONB`。费用代码和计算口径见[成本核算格式](cost-accounting-format.md)。
+最终结构以 `backend/app/db/models.py` 与 Alembic 迁移链（baseline `20260907_0001` + 增量至当前 head `20261021_0007`）为准。时间使用 `TIMESTAMPTZ`，金额使用 `NUMERIC(18,2)`，数量和工时使用 `NUMERIC(18,4)`，追溯载荷使用 `JSONB`。费用代码和计算口径见[成本核算格式](cost-accounting-format.md)。
 
 ## `cost_data`
 
@@ -35,10 +35,9 @@
 | `decision`、`decision_reason`、`decided_by`、`decided_at` | 审批结论（`approved`/`rejected`）、脱敏原因与主体 |
 | `published_batch_id` | 发布后的快照批次；校验失败批次用 `job_id` 关联 `data_load_batches` |
 | `attempt_count`、`lease_owner`、`lease_expires_at`、`available_at` | Worker 重试计数、租约与退避 |
-
-Worker 对可重试故障最多执行 4 次（含首次领取）；达到上限后校验失败进入 `validation_failed`，发布失败进入 `publish_failed`，不再无限重建租约。
 | `started_at`、`finished_at`、`created_at` | 生命周期时间 |
 
+Worker 对可重试故障最多执行 4 次（含首次领取）；达到上限后校验失败进入 `validation_failed`，发布失败进入 `publish_failed`，不再重建租约。Worker 的领取、心跳、退避与租户注入实现见[运行时调度](../architecture/runtime.md#统一任务调度器)。
 `CheckConstraint` `ck_data_import_jobs_status` 把 `status` 限定在
 `submitted/validating/validation_failed/approval_pending/approved/rejected/publishing/published/publish_failed/cancelled`；
 `ck_data_import_jobs_nonnegative_counts` 保证三个计数非负。
@@ -52,7 +51,7 @@ Worker 对可重试故障最多执行 4 次（含首次领取）；达到上限�
 `request_id` 可空；`detail` 为 `JSONB`，只允许计数、错误码、状态、`attempt_count`、`batch_id` 等
 非敏感字段，不得写入 `raw_payload`、文件内容、令牌或连接串。
 `ck_governance_audit_events_action` 与 `ck_governance_audit_events_outcome` 限定动作与结果取值；
-动作集合为 `submitted/validated/validation_failed/approved/rejected/publishing/published/publish_failed/cancelled`
+动作集合为 `submitted/validated/validation_failed/approved/rejected/publishing/published/publish_failed/cancelled/validation_retry_scheduled/publish_retry_scheduled`
 （导入任务生命周期）加 `iam.roles_updated`/`iam.scope_updated`（身份治理变更）。
 `trg_governance_audit_events_append_only`（`BEFORE UPDATE OR DELETE`）对任何修改或删除报 `restrict_violation`，
 使“只追加”由数据库约束而不是调用约定保证；
@@ -224,9 +223,9 @@ Pydantic 契约校验的批次摘要与追溯图，`rule_version` 必须等于�
 为 NULL，查询返回空集，失败方向是收敛而不是放开。`agent_checkpoint.*` 由 LangGraph 维护，
 没有租户概念，只经已鉴权的 run 记录访问，不在策略范围内。
 
-应用连接使用受限角色 `costgraph_app`；Worker 使用 `costgraph_worker`（可跨租户读取
-`cost_data.data_import_jobs` 与 `agent_runtime.agent_runs` 两张调度表）。两个角色均以
-`NOLOGIN` 创建，由部署时授予登录与凭据。表所有者不受策略约束，因此迁移和受控运维连接仍可
+应用连接使用受限角色 `costgraph_app`；调度表策略只允许 `costgraph_worker` 跨租户读取
+`cost_data.data_import_jobs` 与 `agent_runtime.agent_runs` 两张调度表。两个角色均以
+`NOLOGIN` 创建，由部署时授予登录与凭据。Worker 运行路径仍经受控表所有者连接执行多表发布；受限角色策略由 PostgreSQL 集成用例验证。表所有者不受策略约束，因此迁移和受控运维连接仍可
 维护全库。租户上下文由 `backend/app/db/tenant.py` 的 `set_tenant()` 写入，
 `release_session()` 先 `expunge_all()` 再回滚、清空该设置，最后关闭连接，防止连接池复用把
 租户上下文带到下一个请求。租户用会话级 `set_config(..., false)` 写入，`rollback()` 不会清除它，
@@ -244,11 +243,11 @@ EXISTS (SELECT 1 FROM agent_runtime.agent_runs AS parent_row
 条件生效，结果是能读到全部租户的行。`20260921_0005` 修正了这类作用域串扰。
 
 策略是 `ENABLE` 而非 `FORCE`，所以 **API 必须以 `costgraph_app` 连接才受约束**；以表所有者
-连接时 19 张表的策略一条都不生效，只剩 Repository 一层。Worker 按设计使用所有者连接跨租户
-领取调度行，只靠 Repository `WHERE` 与领取后注入的 `tenant_id` 隔离。
+连接时 19 张表的策略一条都不生效，只剩 Repository 一层。Worker 运行使用表所有者连接，依靠 Repository `WHERE` 与领取后注入的 `tenant_id` 隔离；单独授予的 `costgraph_worker` 调度角色只对两张调度表放开 RLS。
 
-验证状态：以 `costgraph_app` 连接真实 `costgraph_test` 后，`test_rls_postgres.py` 的 6 个用例
-（本租户过滤、未设租户返回 0 行、跨租户写入被拒、父表推导不串扰）全部通过。
+历史验证状态：此前在真实 PostgreSQL 上运行过 RLS 用例；本轮需由 PostgreSQL CI job
+重新验证。用例覆盖 `costgraph_app` 的 Repository 访问、连接池租户清理，以及
+`costgraph_worker` 对两租户任务的真实领取。
 
 ## 关系
 

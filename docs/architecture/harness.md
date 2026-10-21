@@ -118,8 +118,9 @@ Harness 从服务端注入的 `ExecutionPrincipal`、会话槽位和有界最近
 
 - staging/production 登录使用 OIDC Authorization Code + PKCE；本地 APP_ENV=demo 可在前后端同时显式开启固定开发主体。两种路径的访问令牌只保存在内存，不写 localStorage、
   sessionStorage、cookie 或 URL。
-- `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；`/api/me` 不返回 `tenant_id`。
-- 401 清空内存令牌并回到登录页；403 保留会话并渲染无权限面板；404 渲染不存在面板。
-  三者不得退化成"空数据"。
+- `GET /api/me` 返回的 `permissions` 决定导航可见性与路由可访问性；权限摘要加载期间不展示导航入口，
+  `/api/me` 不返回 `tenant_id`。
+- 401 清空内存令牌并显示登录失效状态；403 保留会话并渲染无权限面板；503 显示身份服务不可用；
+  其他请求错误显示可重试错误态。报表详情与数据治理批次的 404 显示资源不存在状态，不退化成空数据。
 - 配置项为 `VITE_OIDC_ISSUER`、`VITE_OIDC_CLIENT_ID`、`VITE_OIDC_REDIRECT_URI`、`VITE_OIDC_SCOPE`，
   见 `frontend/.env.example`。

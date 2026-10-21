@@ -9,7 +9,7 @@
 ## 迁移策略
 
 仓库以 `backend/alembic/versions/20260907_0001_costgraph_baseline.py` 为迁移图根节点，
-允许在它之上叠加增量迁移（当前 head `20260921_0005`）。结构变更只能通过 Alembic：
+允许在它之上叠加增量迁移（当前 head `20261021_0007`）。结构变更只能通过 Alembic：
 新表、新列、新索引和键变更均需新增增量迁移，并用显式 `op.` DDL；禁止运行时建表、
 `Base.metadata.create_all`、`autogenerate` 或在迁移中导入运行时模型。
 `scripts/check_docs_sync.ps1` 断言 baseline 存在且 `down_revision = None`，不再限制迁移文件数量；
@@ -28,7 +28,7 @@
 | 模块、Agent 图、责任边界 | `architecture/system.md`、`architecture/data-flow.md` |
 | Runtime 生命周期、预算、租约、恢复 | `architecture/runtime.md` |
 | 能力、策略、主体与数据范围 | `architecture/harness.md` |
-| 数据治理 API、导入任务、权限和治理页面 | `api/data-admin-contract.md`、`architecture/system.md`、`architecture/data-flow.md`、`data/governance.md` |
+| 数据治理 API、导入任务、权限和治理页面（含 401/403/404/503、权限加载与资源缺失状态） | `api/data-admin-contract.md`、`architecture/system.md`、`architecture/data-flow.md`、`architecture/harness.md`、`data/governance.md` |
 | 角色、权限分类法与授权门 | `architecture/harness.md` |
 | IAM、角色/数据范围接口与审计查询 | `api/iam-contract.md`、`architecture/harness.md`、`data/data-dictionary.md` |
 | 前端登录、令牌生命周期与权限导航 | 根 `DESIGN.md`、`architecture/harness.md`、`api/iam-contract.md` |

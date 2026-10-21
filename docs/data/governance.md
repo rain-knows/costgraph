@@ -34,7 +34,7 @@ approval_pending  -> approved | rejected | cancelled
 approved          -> publishing
 rejected          -> (终态)
 publishing        -> published | publish_failed
-publish_failed    -> publishing            (同一已批准任务重试)
+publish_failed    -> (终态；当前没有人工重试接口)
 published         -> (终态)
 cancelled         -> (终态)
 ```
@@ -56,9 +56,11 @@ cancelled         -> (终态)
   `approval_pending` 可决策，`decision` 取 `approve`/`reject`，`reason` 脱敏且不含载荷。
 - 发布在**单事务**内完成四类事实写入、确定性投影生成、新批次发布与旧批次 `superseded`；
   任一投影失败整体回滚，**原有已发布快照完整保留**。
-- 发布失败没有回滚接口；`publish_failed` 任务只允许重试发布（回到 `publishing`），
-  不回滚、不删除已发布快照，也不提供历史快照切换。
-- 瞬时故障按 `available_at` 退避，最多执行 4 次（含首次领取）；达到上限后进入失败终态，不再自动领取。若 Worker 在最后一次领取后崩溃，租约回收会补写对应失败终态和脱敏审计。
+- 发布失败没有回滚接口；`publish_failed` 是终态，不会被 Worker 自动领取，也没有客户端人工重试接口。
+  若将来开放人工重试，必须增加受权限控制且写审计的明确动作。
+- 瞬时故障按 `available_at` 退避并保留 `validating`/`publishing` 工作状态，最多执行 4 次
+  （含首次领取）；不可重试错误或达到上限后进入 `validation_failed`/`publish_failed` 终态。
+  若 Worker 在最后一次领取后崩溃，租约回收会补写对应失败终态和脱敏审计。
 - 新快照、旧快照退役、任务 `published` 状态和成功审计共用一个事务，避免成功状态或审计记录分裂。
 - 校验失败任务不可查询为成本事实；未完成审批的任务不可发布。
 
@@ -173,8 +175,8 @@ unavailable / unauthorized 五态，权限失败不得退化为空数据：
 | `/audit` | 审计事件查询（操作者、动作、目标、结果、请求 ID） | `audit.read` |
 
 页面约束：任务详情按 `status` 与权限组合决定可用动作，未批准的 `approval_pending` 任务不出现
-发布入口；`publish_failed` 只展示既有快照保持不变的说明与 Worker 自动重试计数，不提供伪造的
-手动重试接口；页面不展示原始载荷、不提供回滚或删除、不在前端重算金额。
+发布入口；`publish_failed` 是终态，只展示既有快照保持不变的说明，不提供自动或人工重试接口；
+页面不展示原始载荷、不提供回滚或删除、不在前端重算金额。
 
 ## 前端认证与权限呈现
 
